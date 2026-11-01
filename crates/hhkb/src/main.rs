@@ -5,6 +5,7 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 use hhkb::device::{HidEntry, HidEnumerator, Target, Transport, select_target};
 use hhkb::hfb::{Determination, Report, inspect};
+use hhkb::status::check_status;
 use hidapi::{BusType, HidApi, HidError};
 
 #[derive(Parser)]
@@ -17,6 +18,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     List,
+    Status,
     Inspect { path: PathBuf },
 }
 
@@ -83,6 +85,28 @@ fn list(hid: &impl HidEnumerator) -> ExitCode {
     }
 }
 
+fn status(hid: &SystemHid) -> ExitCode {
+    match check_status(hid, &hid.api) {
+        Ok(status) => {
+            print_target(&status.target);
+            if status.received.is_empty() {
+                println!("承認済みのレポートがないので、デバイスを開かず、何も送信していません");
+            }
+            for received in &status.received {
+                println!(
+                    "応答: コマンド 0x{:02x}、データ長 {}",
+                    received.command, received.data_len
+                );
+            }
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("エラー: {error}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
 fn determination_text(determination: &Determination) -> &str {
     match determination {
         Determination::Known(value) => value,
@@ -139,15 +163,20 @@ fn inspect_file(path: &Path) -> ExitCode {
     }
 }
 
+fn with_hid(run: impl FnOnce(&SystemHid) -> ExitCode) -> ExitCode {
+    match SystemHid::new() {
+        Ok(hid) => run(&hid),
+        Err(error) => {
+            eprintln!("エラー: HID の初期化に失敗しました: {error}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
 fn main() -> ExitCode {
     match Cli::parse().command {
-        Command::List => match SystemHid::new() {
-            Ok(hid) => list(&hid),
-            Err(error) => {
-                eprintln!("エラー: HID の初期化に失敗しました: {error}");
-                ExitCode::FAILURE
-            }
-        },
+        Command::List => with_hid(list),
+        Command::Status => with_hid(status),
         Command::Inspect { path } => inspect_file(&path),
     }
 }
