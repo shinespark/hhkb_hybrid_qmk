@@ -14,19 +14,30 @@ const COMMAND_OFFSET: usize = 2;
 const RESPONSE_TIMEOUT: Duration = Duration::from_secs(1);
 const OFFICIAL_TOOL_PROCESS: &str = "hhkb-keymap-tool";
 
-pub enum ApprovedReport {}
+pub enum ApprovedReport {
+    GetKeyboardInformation,
+}
 
 impl ApprovedReport {
     const fn bytes(&self) -> [u8; REPORT_SIZE] {
-        match *self {}
+        match self {
+            Self::GetKeyboardInformation => {
+                let mut report = [0; REPORT_SIZE];
+                report[0] = 0xaa;
+                report[1] = 0xaa;
+                report[COMMAND_OFFSET] = 0x02;
+                report
+            }
+        }
     }
 }
 
-const APPROVED_REPORTS: &[ApprovedReport] = &[];
+const APPROVED_REPORTS: &[ApprovedReport] = &[ApprovedReport::GetKeyboardInformation];
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Received {
     pub command: u8,
+    pub byte3: u8,
     pub data_len: u8,
 }
 
@@ -162,8 +173,9 @@ fn output_buffer(report: &[u8; REPORT_SIZE]) -> [u8; REPORT_SIZE + 1] {
 
 fn parse_response(bytes: &[u8], command: u8) -> Option<Received> {
     match bytes {
-        [0x55, 0x55, received, _, _, data_len, ..] if *received == command => Some(Received {
+        [0x55, 0x55, received, byte3, _, data_len, ..] if *received == command => Some(Received {
             command,
+            byte3: *byte3,
             data_len: *data_len,
         }),
         _ => None,
@@ -508,6 +520,7 @@ mod tests {
             status.received,
             [Received {
                 command: 0x02,
+                byte3: 0x00,
                 data_len: 57
             }]
         );
@@ -575,6 +588,7 @@ mod tests {
             status.received,
             [Received {
                 command: 0x02,
+                byte3: 0x00,
                 data_len: 57
             }]
         );
@@ -593,6 +607,33 @@ mod tests {
         );
         assert_eq!(result, Err(StatusError::Timeout { command: 0x02 }));
         assert_eq!(log.borrow().send_attempts.len(), 1);
+    }
+
+    #[test]
+    fn only_the_recorded_get_keyboard_information_report_is_approved() {
+        let mut expected = [0u8; 64];
+        expected[0] = 0xaa;
+        expected[1] = 0xaa;
+        expected[2] = 0x02;
+        let approved: Vec<[u8; REPORT_SIZE]> =
+            APPROVED_REPORTS.iter().map(ApprovedReport::bytes).collect();
+        assert_eq!(approved, [expected]);
+    }
+
+    #[test]
+    fn fourth_byte_of_the_response_is_reported() {
+        let mut bytes = response(0x02, 57);
+        bytes[3] = 0x07;
+        let (opener, _log) = opener(vec![Reply::Data(bytes)]);
+        let status = check_with(
+            &TOOL_NOT_RUNNING,
+            &keyboard("a"),
+            &opener,
+            &[report(0x02)],
+            TIMEOUT,
+        )
+        .unwrap();
+        assert_eq!(status.received[0].byte3, 0x07);
     }
 
     #[test]
