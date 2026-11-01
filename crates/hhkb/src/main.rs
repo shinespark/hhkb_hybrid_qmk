@@ -94,8 +94,8 @@ fn status(hid: &SystemHid) -> ExitCode {
             }
             for received in &status.received {
                 println!(
-                    "応答: コマンド 0x{:02x}、データ長 {}",
-                    received.command, received.data_len
+                    "応答: コマンド 0x{:02x}、4 バイト目 0x{:02x}、データ長 {}",
+                    received.command, received.byte3, received.data_len
                 );
             }
             ExitCode::SUCCESS
