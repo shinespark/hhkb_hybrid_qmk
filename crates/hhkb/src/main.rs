@@ -1,7 +1,10 @@
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use hhkb::device::{HidEntry, HidEnumerator, Target, Transport, select_target};
+use hhkb::hfb::{Determination, Report, inspect};
 use hidapi::{BusType, HidApi, HidError};
 
 #[derive(Parser)]
@@ -14,6 +17,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     List,
+    Inspect { path: PathBuf },
 }
 
 struct SystemHid {
@@ -79,16 +83,71 @@ fn list(hid: &impl HidEnumerator) -> ExitCode {
     }
 }
 
-fn main() -> ExitCode {
-    let cli = Cli::parse();
-    let hid = match SystemHid::new() {
-        Ok(hid) => hid,
+fn determination_text(determination: &Determination) -> &str {
+    match determination {
+        Determination::Known(value) => value,
+        Determination::Undetermined => "未確定",
+    }
+}
+
+fn print_report(report: &Report) {
+    println!("ファイルサイズ: 0x{:x} バイト", report.file_size);
+    println!("領域:");
+    for region in &report.regions {
+        println!(
+            "  0x{:05x}  サイズ 0x{:05x}  {}",
+            region.offset, region.size, region.name
+        );
+    }
+    println!("整合性:");
+    for check in &report.checks {
+        let result = if check.is_match() {
+            "一致"
+        } else {
+            "不一致"
+        };
+        println!(
+            "  {}: {result}（0x{:05x}〜0x{:05x}、{}、ファイル内 {}、再計算 {}）",
+            check.name, check.start, check.end, check.algorithm, check.stored, check.computed
+        );
+    }
+    println!("機種: {}", determination_text(&report.model));
+    println!("版: {}", determination_text(&report.version));
+}
+
+fn inspect_file(path: &Path) -> ExitCode {
+    let data = match fs::read(path) {
+        Ok(data) => data,
         Err(error) => {
-            eprintln!("エラー: HID の初期化に失敗しました: {error}");
+            eprintln!("エラー: {} を読めません: {error}", path.display());
             return ExitCode::FAILURE;
         }
     };
-    match cli.command {
-        Command::List => list(&hid),
+    match inspect(&data) {
+        Ok(report) => {
+            print_report(&report);
+            if report.is_valid() {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::FAILURE
+            }
+        }
+        Err(error) => {
+            eprintln!("エラー: {error}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn main() -> ExitCode {
+    match Cli::parse().command {
+        Command::List => match SystemHid::new() {
+            Ok(hid) => list(&hid),
+            Err(error) => {
+                eprintln!("エラー: HID の初期化に失敗しました: {error}");
+                ExitCode::FAILURE
+            }
+        },
+        Command::Inspect { path } => inspect_file(&path),
     }
 }
