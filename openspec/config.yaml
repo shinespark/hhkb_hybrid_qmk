@@ -1,0 +1,40 @@
+schema: spec-driven
+
+context: |
+  成果物はすべて日本語で書く。
+  ネット上の資料は参考に留め、仕様や結論は実機と自前の観測で裏付ける。未検証の情報は未検証と明記する。
+  公式ツールの EULA はリバースエンジニアリングを制限している。解析範囲はユーザーの判断に従い、勝手に広げない。
+  キーボードへの書き込みは、読み取りとバックアップ・復元を確認するまで行わない。
+  ツールやライブラリのバージョン情報はドキュメントに書かない。
+  実装できる部分は Rust で書く。
+
+# Project context (optional)
+# Add only constraints that should guide OpenSpec artifacts and workflows.
+# Include constraints an agent cannot infer by reading the code.
+# Keep general project documentation and discoverable codebase facts out.
+# Example:
+#   context: |
+#     Designs and tasks must cover Windows, macOS, and Linux
+#     Write all artifacts in Spanish
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always state what is out of scope
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
+
+# Per-operation guidance (optional)
+# Add advisory guidance for how apply and archive work should be conducted.
+# This is separate from artifact rules above.
+# Example:
+#   operations:
+#     apply:
+#       guidance:
+#         - Keep test summaries concise
+#     archive:
+#       guidance:
+#         - Summarize the archive outcome before finishing
