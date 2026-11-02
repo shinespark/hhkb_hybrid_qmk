@@ -391,7 +391,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "local/ の純正 HFB と、Linux から取得した local/flash-trace.jsonl が必要"]
+    #[ignore = "local/ の公式 HFB と、Linux から取得した local/flash-trace.jsonl が必要"]
     fn frames_and_validation_match_the_linux_trace() {
         let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../../local");
         let data = std::fs::read(format!("{root}/HHKB800_FW_A048.hfb")).unwrap();

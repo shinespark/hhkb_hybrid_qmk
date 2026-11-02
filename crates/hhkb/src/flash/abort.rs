@@ -52,7 +52,7 @@ impl Abort {
             }
             Stage::ModeChangeAttempted => format!(
                 "到達した段階: 移行のレポート（e0）の送信後。{CHECK_BY_KEY_INPUT}\n\
-                 - 入力できる: 純正 FW で動いている可能性があります。hhkb flash enter をやり直すかを判断します\n\
+                 - 入力できる: 公式ファームウェアで動いている可能性があります。hhkb flash enter をやり直すかを判断します\n\
                  - 入力できない: 更新モードの可能性があります。USB を抜き差しして hhkb list で確かめ、hhkb flash write を実行するかを判断します\n\
                  {LINUX_RECOVERY}"
             ),
@@ -67,7 +67,7 @@ impl Abort {
                  {LINUX_RECOVERY}"
             ),
             Stage::QmkRevertRefused => format!(
-                "到達した段階: QMK への f0 の送信後。f0 は拒否され、e0 は送信していません。VIA の設定が残ったまま純正へ戻らないように、移行を中止しました。{CHECK_BY_KEY_INPUT}\n\
+                "到達した段階: QMK への f0 の送信後。f0 は拒否され、e0 は送信していません。VIA の設定が残ったまま公式ファームウェアへ戻らないように、移行を中止しました。{CHECK_BY_KEY_INPUT}\n\
                  hhkb flash enter をやり直しても結果は変わらない可能性が高いので、繰り返さずに判断します\n\
                  {QMK_BOOTMAGIC}\n\
                  {LINUX_RECOVERY}"
@@ -226,7 +226,7 @@ mod tests {
             for assertion in [
                 "更新モードです",
                 "更新モードのままです",
-                "純正 FW です",
+                "公式ファームウェアです",
                 "壊れ",
             ] {
                 assert!(!text.contains(assertion), "{stage:?}: {text}");

@@ -24,7 +24,7 @@ enum Command {
     Inspect {
         path: PathBuf,
     },
-    /// 許可した HFB（純正、QMK の default と via）を段階を分けて書き込む
+    /// 許可した HFB（公式ファームウェア、QMK の default と via）を段階を分けて書き込む
     Flash {
         #[command(subcommand)]
         stage: FlashStage,
@@ -45,7 +45,7 @@ enum QmkCommand {
         #[arg(long, value_enum, default_value = "arm64")]
         platform: Platform,
     },
-    /// 許可した純正 HFB と .bin から HFB を生成する。実機には触れない
+    /// 許可した公式 HFB と .bin から HFB を生成する。実機には触れない
     Hfb {
         #[arg(value_enum)]
         keymap: Keymap,
@@ -62,7 +62,7 @@ enum QmkCommand {
 enum FlashStage {
     /// HFB を検査し、種類、パケット数、接続状況を表示する。実機には送信しない
     Plan { path: PathBuf },
-    /// 更新モードへ移行する。純正 FW の動作中は実機の版を確認する。本体は書き込まない
+    /// 更新モードへ移行する。公式ファームウェアの動作中は実機の版を確認する。本体は書き込まない
     Enter { path: PathBuf },
     /// 更新モードの実機に本体を書き込む
     Write { path: PathBuf },
@@ -102,7 +102,7 @@ fn print_target(target: &Target) {
         "状態: {}",
         match target.state {
             DeviceState::StockOrUpdate =>
-                "純正 FW または更新モード（この情報では区別できません。キー入力の可否で確認してください）",
+                "公式ファームウェアまたは更新モード（この情報では区別できません。キー入力の可否で確認してください）",
             DeviceState::QmkLikely =>
                 "QMK の動作中の可能性が高い（製品名とインターフェースからの判断です。公式ツールを起動しないでください）",
             DeviceState::Undetermined =>
@@ -134,7 +134,9 @@ fn status(hid: &SystemHid) -> ExitCode {
                         "承認済みのレポートがないので、デバイスを開かず、何も送信していません"
                     );
                 } else {
-                    println!("純正 FW に見えないので、デバイスを開かず、何も送信していません");
+                    println!(
+                        "公式ファームウェアに見えないので、デバイスを開かず、何も送信していません"
+                    );
                 }
             }
             for received in &status.received {

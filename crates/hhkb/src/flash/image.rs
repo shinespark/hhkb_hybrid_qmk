@@ -22,7 +22,7 @@ impl HfbKind {
 impl fmt::Display for HfbKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
-            Self::Stock => "純正",
+            Self::Stock => "公式ファームウェア",
             Self::QmkDefault => "QMK の default",
             Self::QmkVia => "QMK の via",
         })
