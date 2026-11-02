@@ -1,12 +1,14 @@
-# hhkb_hybrid_qmk
+# HHKB Hybrid QMK
 
 HHKB Professional Hybrid（英語配列）向けの QMK をビルドし、macOS から書き込む非公式の CLI です。公式ファームウェアへ戻すこともできます。
 
 動作を確認した環境は、macOS と英語配列の 1 台だけです。
 
-## VIA でできること
+## QMK と VIA
 
-QMK の `via` を適用すると、VIA からキーマップを変更できます。
+QMK はキーボードのファームウェアです。本リポジトリでは `default` と `via` の 2 つの keymap をビルドできます。`via` を[書き込む](#qmk-の適用)と、ブラウザで [VIA](https://usevia.app) を開き、ビルドし直さずにキーマップを変更できます。
+
+### VIA でできること
 
 - 公式のキーマップ変更ツールでは実現できなかったキーマップ変更（特別な機能を割り当てられた一部のキーの変更など）ができるようになります
 - 3 つ以上のレイヤーを使えます。VIA の画面ではレイヤー 0〜7 を選択できます
@@ -15,6 +17,42 @@ QMK の `via` を適用すると、VIA からキーマップを変更できま�
 ![VIA のキーマップ画面](docs/images/via-keymap.png)
 
 VIA でキーマップを Dvorak 配列に変更した例です。
+
+![VIA のレイヤー 1 の画面](docs/images/via-fn-layer.png)
+
+Fn キーを押している間に使うレイヤー 1 の例です。右下の下矢印キーの割り当ては、公式のキーマップ変更ツールではできませんでしたが、VIA ではできるようになります。
+
+## 仕組み
+
+HHKB の更新モードを使って、キーボードのファームウェアを QMK に置き換えます。
+
+HHKB には、キー入力を処理する STM32 と、Bluetooth を担当する nRF の 2 つのチップがあります。QMK を書き込む先は、STM32 のアプリ領域です。
+
+| 書き込み先 | 公式ファームウェアでの内容 | QMK を適用した後 |
+|---|---|---|
+| STM32 のブートローダ領域 | 起動と更新モードの処理 | 変更しない |
+| STM32 のアプリ領域（64 KiB） | 公式ファームウェア | QMK に置き換わる |
+| STM32 の EEPROM | キーマップと設定 | `via` では VIA の変更をここに保存する |
+| nRF | Bluetooth のファームウェア | 公式のものをそのまま使う |
+
+```mermaid
+flowchart LR
+    source["QMK 本体と<br>キーボード定義"] -->|qmk build| bin[".bin"]
+    bin -->|qmk hfb| hfb["QMK の HFB"]
+    stock["公式の HFB"] -->|qmk hfb| hfb
+    hfb -->|"flash prepare<br>flash write"| hhkb["HHKB"]
+    via["VIA（ブラウザ）"] <-->|キーマップの読み書き| hhkb
+```
+
+1. **QMK のビルド（`qmk build`）**: [参考実装](https://github.com/l3tnun/hhkb_hybrid)にある HHKB 用のキーボード定義と QMK 本体を Docker でビルドし、`.bin` を作ります
+2. **更新ファイルの生成（`qmk hfb`）**: 公式の更新ファイル（HFB）のうち、キー入力を処理する STM32 のアプリ領域を `.bin` に置き換え、チェックサムを計算し直します。Bluetooth を担当する nRF のイメージは公式のものをそのまま使います
+3. **書き込み（`flash prepare`、`flash write`）**: HHKB を更新モードへ移行し、生成した HFB を USB から書き込みます
+
+`via` でビルドした QMK は、VIA からの読み書きに応答します。VIA はブラウザから USB 経由でキーマップを読み書きし、変更はキーボードに保存されます。公式ファームウェアのままでは VIA を使えないので、QMK に置き換えます。
+
+公式ファームウェアへ戻すときは、公式の HFB を同じ手順で書き込みます。
+
+チップと領域の用途は[参考実装の資料](https://github.com/l3tnun/hhkb_hybrid/blob/0099ac64d30a0530714844fe1fcbaff230fc65fa/docs/hardware.md)にもとづきます。
 
 ## 免責事項
 
@@ -34,11 +72,11 @@ VIA でキーマップを Dvorak 配列に変更した例です。
 
 ## 必要なもの
 
-- macOS と Rust のツールチェーン
-- 公式の更新ファイル `local/HHKB800_FW_A048.hfb`。本リポジトリには含まないので、利用者自身で用意してください
-- Docker Desktop
-- もう 1 枚のキーボード
-- macOS から戻せないときに使う [Linux の環境](docs/analysis/findings.md#linux-からの復旧手順)
+- macOS と Rust のツールチェーン: CLI のビルドと実行に使います
+- 公式の更新ファイル `local/HHKB800_FW_A048.hfb`: QMK の HFB を生成するテンプレートと、公式ファームウェアへ戻すときに使います。PFU 製のイメージを含むので本リポジトリには含みません。利用者自身で用意してください
+- Docker Desktop: QMK のビルドに使います
+- もう 1 枚のキーボード: 更新モードでは HHKB から入力できない可能性があるので、確認文の入力に使います
+- WebHID に対応したブラウザ（Chrome、Edge など）: VIA を使うときに必要です
 
 ## QMK の適用
 
@@ -56,7 +94,7 @@ git -C third_party/hhkb_hybrid/qmk_firmware submodule update --init --depth 1 li
 
 ### 2. ビルドと HFB の生成
 
-Docker Desktop を起動してから実行します。`docker` コマンドが見つからないときは、Docker Desktop の CLI を PATH に追加してください。HHKB には接続しません。
+Docker Desktop を起動してから実行します。`docker` コマンドが見つからないときは、Docker Desktop の CLI を PATH に追加してください。この時点では HHKB に接続しません。
 
 ```sh
 cargo run -p hhkb -- qmk build via
@@ -66,7 +104,6 @@ cargo run -p hhkb -- qmk hfb via --bin local/qmk-build/via-arm64/hhkb_hybrid_via
 ### 3. 書き込む前の確認
 
 - 公式ツールで現在の設定を `.hks` に保存する
-- [Linux からの復旧手順](docs/analysis/findings.md#linux-からの復旧手順)を実行できる環境を用意する
 - 公式ツールと VIA のタブを閉じる
 - USB に接続する HHKB を 1 台にし、ハブを使わず直結する
 - HHKB とペアリングした機器の Bluetooth を切る。Bluetooth 接続時に転送が止まる例が参考実装の資料にあります
@@ -98,6 +135,7 @@ cargo run -p hhkb -- qmk hfb via --bin local/qmk-build/via-arm64/hhkb_hybrid_via
 
 ### 5. 書き込んだ後
 
+- HHKB は VIA の公式リストに載っていないので、最初に定義ファイル `third_party/hhkb_hybrid/via/hhkb_hybrid.json` を VIA の Design タブから読み込みます。手順は[参考実装の資料](https://github.com/l3tnun/hhkb_hybrid/blob/0099ac64d30a0530714844fe1fcbaff230fc65fa/docs/via.md)を参照してください
 - VIA で接続エラーが出たときは、ページを再読み込みしてください
 - Bluetooth で接続できないときは、接続先を登録し直してください。Mac の Bluetooth の一覧に、同じ名前の古い項目が残ることがあります
 
@@ -140,9 +178,7 @@ USB に表示されないとき:
 3. Esc を押したまま USB を接続する
 4. 別の PC で認識を確認する
 
-macOS から戻せないときは、[Linux からの復旧手順](docs/analysis/findings.md#linux-からの復旧手順)を実行します。
-
-最終手段は分解です。詳細は[参考実装の資料](https://github.com/l3tnun/hhkb_hybrid/blob/0099ac64d30a0530714844fe1fcbaff230fc65fa/docs/recovery.md)を参照してください。
+うまくいかないときは、[参考実装の資料](https://github.com/l3tnun/hhkb_hybrid/blob/0099ac64d30a0530714844fe1fcbaff230fc65fa/docs/recovery.md)を参照してください。
 
 ## コマンド
 
