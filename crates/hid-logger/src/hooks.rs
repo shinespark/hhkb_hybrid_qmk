@@ -201,7 +201,7 @@ unsafe extern "C" fn hook_set_report(
     match outcome {
         Ok(SendOutcome::Forwarded(result)) => result,
         Ok(SendOutcome::Blocked) | Err(_) => {
-            eprintln!("hid-logger: 許可されていない送信を止めたため中止します");
+            eprintln!("hid-logger: blocked a send that is not allowed; aborting");
             std::process::abort();
         }
     }

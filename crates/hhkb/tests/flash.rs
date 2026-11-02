@@ -57,9 +57,9 @@ fn every_stage_rejects_a_file_outside_the_allowlist_before_touching_the_device()
     for stage in STAGES {
         let output = flash(&[stage, file.0.to_str().unwrap()]);
         assert!(!output.status.success(), "{stage}");
-        assert!(text(&output.stderr).contains("許可リスト"), "{stage}");
+        assert!(text(&output.stderr).contains("allowlist"), "{stage}");
         assert!(
-            !text(&output.stdout).contains("入力してください"),
+            !text(&output.stdout).contains("To proceed, type"),
             "{stage}"
         );
     }
@@ -70,7 +70,7 @@ fn every_stage_rejects_a_missing_file() {
     for stage in STAGES {
         let output = flash(&[stage, "/nonexistent/hhkb-test.hfb"]);
         assert!(!output.status.success(), "{stage}");
-        assert!(text(&output.stderr).contains("読めません"), "{stage}");
+        assert!(text(&output.stderr).contains("Cannot read"), "{stage}");
     }
 }
 

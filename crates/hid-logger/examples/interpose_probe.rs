@@ -15,7 +15,7 @@ unsafe extern "C" {
 fn main() -> ExitCode {
     // ロガーなしで実行すると、実物の IOKit に NULL デバイスを渡してしまう
     if std::env::var_os("DYLD_INSERT_LIBRARIES").is_none() {
-        eprintln!("DYLD_INSERT_LIBRARIES が必要です");
+        eprintln!("DYLD_INSERT_LIBRARIES is required");
         return ExitCode::from(2);
     }
     let report = [0x01u8, 0x02, 0x03, 0x04];

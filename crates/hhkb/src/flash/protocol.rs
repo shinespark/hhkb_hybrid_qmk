@@ -54,21 +54,21 @@ pub(super) struct ExchangeError {
 impl fmt::Display for ExchangeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.step {
-            Step::Body(packet) => write!(f, "コマンド 0xe2（パケット {packet}）: ")?,
-            step => write!(f, "コマンド 0x{:02x}: ", command(step))?,
+            Step::Body(packet) => write!(f, "Command 0xe2 (packet {packet}): ")?,
+            step => write!(f, "Command 0x{:02x}: ", command(step))?,
         }
         match &self.failure {
-            ExchangeFailure::Send(reason) => write!(f, "送信に失敗しました: {reason}")?,
-            ExchangeFailure::Receive(reason) => write!(f, "受信に失敗しました: {reason}")?,
-            ExchangeFailure::Timeout => write!(f, "応答が制限時間内に届きませんでした")?,
+            ExchangeFailure::Send(reason) => write!(f, "send failed: {reason}")?,
+            ExchangeFailure::Receive(reason) => write!(f, "receive failed: {reason}")?,
+            ExchangeFailure::Timeout => write!(f, "no response within the time limit")?,
             ExchangeFailure::Unexpected { head } => {
-                write!(f, "想定と異なる応答です（先頭 {}）", to_hex(head))?;
+                write!(f, "unexpected response (starts with {})", to_hex(head))?;
             }
             ExchangeFailure::PacketMismatch { got } => {
-                write!(f, "応答のパケット番号が {got} で、送信と異なります")?;
+                write!(f, "response packet number {got} differs from the one sent")?;
             }
         }
-        write!(f, "。再送しません")
+        write!(f, ". Not retrying")
     }
 }
 
@@ -104,14 +104,14 @@ pub(super) fn frame_for(step: Step, hfb: &VerifiedHfb) -> Frame {
     match step {
         Step::KeyboardInfo | Step::ModeChange | Step::End | Step::Qmk(_) => {}
         Step::Start => {
-            let size = u32::try_from(hfb.size()).expect("HFB のサイズは検査済み");
+            let size = u32::try_from(hfb.size()).expect("HFB size is already verified");
             frame[4] = 8;
             frame[5..9].copy_from_slice(&size.to_le_bytes());
             frame[9..11].copy_from_slice(&hfb.stored_crc());
         }
         Step::Body(packet) => {
             let chunk = hfb.chunk(packet);
-            frame[4] = u8::try_from(chunk.len() + 2).expect("パケットは 57 バイト以下");
+            frame[4] = u8::try_from(chunk.len() + 2).expect("a packet is at most 57 bytes");
             frame[5..7].copy_from_slice(&packet.to_le_bytes());
             frame[7..7 + chunk.len()].copy_from_slice(chunk);
         }
@@ -262,7 +262,7 @@ pub(super) fn transfer(
     };
     step_through(device, log, Step::Start, last_acked)?;
     for index in 0..total {
-        let packet = u16::try_from(index).expect("パケット数は HFB のサイズで決まる");
+        let packet = u16::try_from(index).expect("packet count is fixed by the HFB size");
         step_through(device, log, Step::Body(packet), last_acked)?;
         last_acked = Some(packet);
         progress(index + 1, total);
@@ -315,15 +315,15 @@ pub(super) mod testing {
         fn send(&mut self, report: &[u8]) -> Result<(), String> {
             self.sent.push(report.to_vec());
             if self.current_fault() == Some(Fault::SendFails) {
-                return Err("送信失敗".to_owned());
+                return Err("send failed".to_owned());
             }
             Ok(())
         }
 
         fn receive(&mut self, _timeout: Duration) -> Result<Option<Vec<u8>>, String> {
-            let mut reply = correct_reply(self.sent.last().expect("送信の前に受信しない"));
+            let mut reply = correct_reply(self.sent.last().expect("no receive before a send"));
             match self.current_fault() {
-                Some(Fault::ReceiveFails) => return Err("受信失敗".to_owned()),
+                Some(Fault::ReceiveFails) => return Err("receive failed".to_owned()),
                 Some(Fault::NoResponse) => return Ok(None),
                 Some(Fault::WrongCommand) => reply[2] = 0x02,
                 Some(Fault::NonZeroStatus) => reply[3] = 0x01,
@@ -375,11 +375,11 @@ mod tests {
 
     fn json_string<'a>(line: &'a str, key: &str) -> &'a str {
         let prefix = format!("\"{key}\": \"");
-        let start = line.find(&prefix).expect("trace の項目がありません") + prefix.len();
+        let start = line.find(&prefix).expect("trace field is missing") + prefix.len();
         let end = start
             + line[start..]
                 .find('"')
-                .expect("trace の項目が閉じていません");
+                .expect("trace field is not terminated");
         &line[start..end]
     }
 
@@ -391,7 +391,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "local/ の公式 HFB と、Linux から取得した local/flash-trace.jsonl が必要"]
+    #[ignore = "requires the stock HFB in local/ and local/flash-trace.jsonl captured on Linux"]
     fn frames_and_validation_match_the_linux_trace() {
         let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../../local");
         let data = std::fs::read(format!("{root}/HHKB800_FW_A048.hfb")).unwrap();
@@ -537,7 +537,7 @@ mod tests {
                 Ok(())
             }
             fn receive(&mut self, _timeout: Duration) -> Result<Option<Vec<u8>>, String> {
-                Err("受信失敗".to_owned())
+                Err("receive failed".to_owned())
             }
         }
         assert!(qmk_via_answers(&mut Failing, &mut null_log(), SHORT).is_err());

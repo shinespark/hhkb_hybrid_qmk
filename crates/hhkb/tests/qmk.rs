@@ -66,7 +66,7 @@ fn generated_image_is_rejected_by_every_flash_stage() {
     for stage in ["plan", "enter", "write"] {
         let output = hhkb(&["flash", stage, file.0.to_str().unwrap()]);
         assert!(!output.status.success(), "{stage}");
-        assert!(text(&output.stderr).contains("許可リスト"), "{stage}");
+        assert!(text(&output.stderr).contains("allowlist"), "{stage}");
     }
 }
 
@@ -111,7 +111,7 @@ fn hfb_rejects_a_template_outside_the_allowlist_without_creating_output() {
         out.to_str().unwrap(),
     ]);
     assert!(!output.status.success());
-    assert!(text(&output.stderr).contains("許可リスト"));
+    assert!(text(&output.stderr).contains("allowlist"));
     assert!(!out.exists());
 }
 

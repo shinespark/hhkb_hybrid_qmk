@@ -24,12 +24,12 @@ enum Command {
     Inspect {
         path: PathBuf,
     },
-    /// 許可した HFB（公式ファームウェア、QMK の default と via）を段階を分けて書き込む
+    /// Write an allowlisted HFB (stock firmware, QMK default, or QMK via) in separate stages
     Flash {
         #[command(subcommand)]
         stage: FlashStage,
     },
-    /// QMK のビルドと HFB の生成
+    /// Build QMK and generate HFB files
     Qmk {
         #[command(subcommand)]
         command: QmkCommand,
@@ -38,14 +38,14 @@ enum Command {
 
 #[derive(Subcommand)]
 enum QmkCommand {
-    /// 固定した入力で QMK をビルドし、.bin の SHA-256 を照合する。実機には触れない
+    /// Build QMK from pinned inputs and verify the .bin SHA-256. Does not touch the device
     Build {
         #[arg(value_enum)]
         keymap: Keymap,
         #[arg(long, value_enum, default_value = "arm64")]
         platform: Platform,
     },
-    /// 許可した公式 HFB と .bin から HFB を生成する。実機には触れない
+    /// Generate an HFB from an allowlisted stock HFB and .bin. Does not touch the device
     Hfb {
         #[arg(value_enum)]
         keymap: Keymap,
@@ -60,11 +60,11 @@ enum QmkCommand {
 
 #[derive(Subcommand)]
 enum FlashStage {
-    /// HFB を検査し、種類、パケット数、接続状況を表示する。実機には送信しない
+    /// Verify an HFB and show its kind, packet count, and connection. Sends nothing to the device
     Plan { path: PathBuf },
-    /// 更新モードへ移行する。公式ファームウェアの動作中は実機の版を確認する。本体は書き込まない
+    /// Switch to update mode. Checks the device version on stock firmware. Does not write the firmware
     Enter { path: PathBuf },
-    /// 更新モードの実機に本体を書き込む
+    /// Write the firmware to a device in update mode
     Write { path: PathBuf },
 }
 
@@ -87,9 +87,12 @@ impl HidEnumerator for SystemHid {
 }
 
 fn print_target(target: &Target) {
-    println!("製品名: {}", target.product.as_deref().unwrap_or("(不明)"));
-    println!("バージョン: 0x{:04x}", target.release);
-    println!("インターフェース:");
+    println!(
+        "Product: {}",
+        target.product.as_deref().unwrap_or("(unknown)")
+    );
+    println!("Release: 0x{:04x}", target.release);
+    println!("Interfaces:");
     for interface in &target.interfaces {
         let usages: Vec<String> = interface
             .usages
@@ -99,14 +102,14 @@ fn print_target(target: &Target) {
         println!("  {}  {}", interface.path, usages.join(", "));
     }
     println!(
-        "状態: {}",
+        "State: {}",
         match target.state {
             DeviceState::StockOrUpdate =>
-                "公式ファームウェアまたは更新モード（この情報では区別できません。キー入力の可否で確認してください）",
+                "Stock firmware or update mode (cannot be told apart from this information; check by key input)",
             DeviceState::QmkLikely =>
-                "QMK の動作中の可能性が高い（製品名とインターフェースからの判断です。公式ツールを起動しないでください）",
+                "QMK is likely running (judged from the product name and interfaces; do not start the official tool)",
             DeviceState::Undetermined =>
-                "確定できません（製品名とインターフェースの判断が一致しません）。書き込みの段階には進みません",
+                "Undetermined (the product name and interfaces disagree). Write stages will not proceed",
         }
     );
 }
@@ -118,7 +121,7 @@ fn list(hid: &impl HidEnumerator) -> ExitCode {
             ExitCode::SUCCESS
         }
         Err(error) => {
-            eprintln!("エラー: {error}");
+            eprintln!("Error: {error}");
             ExitCode::FAILURE
         }
     }
@@ -131,24 +134,24 @@ fn status(hid: &SystemHid) -> ExitCode {
             if status.received.is_empty() {
                 if status.target.state == DeviceState::StockOrUpdate {
                     println!(
-                        "承認済みのレポートがないので、デバイスを開かず、何も送信していません"
+                        "No approved report exists, so the device was not opened and nothing was sent"
                     );
                 } else {
                     println!(
-                        "公式ファームウェアに見えないので、デバイスを開かず、何も送信していません"
+                        "Does not look like stock firmware, so the device was not opened and nothing was sent"
                     );
                 }
             }
             for received in &status.received {
                 println!(
-                    "応答: コマンド 0x{:02x}、4 バイト目 0x{:02x}、データ長 {}",
+                    "Response: command 0x{:02x}, byte 3 0x{:02x}, data length {}",
                     received.command, received.byte3, received.data_len
                 );
             }
             ExitCode::SUCCESS
         }
         Err(error) => {
-            eprintln!("エラー: {error}");
+            eprintln!("Error: {error}");
             ExitCode::FAILURE
         }
     }
@@ -157,40 +160,40 @@ fn status(hid: &SystemHid) -> ExitCode {
 fn determination_text(determination: &Determination) -> &str {
     match determination {
         Determination::Known(value) => value,
-        Determination::Undetermined => "未確定",
+        Determination::Undetermined => "undetermined",
     }
 }
 
 fn print_report(report: &Report) {
-    println!("ファイルサイズ: 0x{:x} バイト", report.file_size);
-    println!("領域:");
+    println!("File size: 0x{:x} bytes", report.file_size);
+    println!("Regions:");
     for region in &report.regions {
         println!(
-            "  0x{:05x}  サイズ 0x{:05x}  {}",
+            "  0x{:05x}  size 0x{:05x}  {}",
             region.offset, region.size, region.name
         );
     }
-    println!("整合性:");
+    println!("Integrity:");
     for check in &report.checks {
         let result = if check.is_match() {
-            "一致"
+            "match"
         } else {
-            "不一致"
+            "mismatch"
         };
         println!(
-            "  {}: {result}（0x{:05x}〜0x{:05x}、{}、ファイル内 {}、再計算 {}）",
+            "  {}: {result} (0x{:05x}-0x{:05x}, {}, stored {}, computed {})",
             check.name, check.start, check.end, check.algorithm, check.stored, check.computed
         );
     }
-    println!("機種: {}", determination_text(&report.model));
-    println!("版: {}", determination_text(&report.version));
+    println!("Model: {}", determination_text(&report.model));
+    println!("Version: {}", determination_text(&report.version));
 }
 
 fn inspect_file(path: &Path) -> ExitCode {
     let data = match fs::read(path) {
         Ok(data) => data,
         Err(error) => {
-            eprintln!("エラー: {} を読めません: {error}", path.display());
+            eprintln!("Error: Cannot read {}: {error}", path.display());
             return ExitCode::FAILURE;
         }
     };
@@ -204,7 +207,7 @@ fn inspect_file(path: &Path) -> ExitCode {
             }
         }
         Err(error) => {
-            eprintln!("エラー: {error}");
+            eprintln!("Error: {error}");
             ExitCode::FAILURE
         }
     }
@@ -212,22 +215,22 @@ fn inspect_file(path: &Path) -> ExitCode {
 
 fn load_verified(path: &Path) -> Result<VerifiedHfb, String> {
     let data =
-        fs::read(path).map_err(|error| format!("{} を読めません: {error}", path.display()))?;
+        fs::read(path).map_err(|error| format!("Cannot read {}: {error}", path.display()))?;
     VerifiedHfb::verify(data).map_err(|error| error.to_string())
 }
 
 fn flash_plan(hid: &SystemHid, hfb: &VerifiedHfb) -> ExitCode {
     print_report(hfb.report());
-    println!("SHA-256: {}（許可リストと一致）", hfb.sha256());
-    println!("種類: {}", hfb.kind());
+    println!("SHA-256: {} (matches the allowlist)", hfb.sha256());
+    println!("Kind: {}", hfb.kind());
     let plan = flash::plan(hfb, hid);
-    println!("本体の送信: {} パケット", plan.packets);
-    println!("接続状況:");
+    println!("Firmware to send: {} packets", plan.packets);
+    println!("Connection:");
     match &plan.connection {
         Ok(target) => print_target(target),
         Err(error) => println!("  {error}"),
     }
-    println!("実機には何も送信していません");
+    println!("Nothing was sent to the device");
     ExitCode::SUCCESS
 }
 
@@ -235,7 +238,7 @@ fn finish_stage(result: Result<(), Abort>) -> ExitCode {
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(abort) => {
-            eprintln!("エラー: {abort}");
+            eprintln!("Error: {abort}");
             eprintln!("{}", abort.guidance());
             ExitCode::FAILURE
         }
@@ -249,7 +252,7 @@ fn flash_stage(stage: FlashStage) -> ExitCode {
     let hfb = match load_verified(path) {
         Ok(hfb) => hfb,
         Err(reason) => {
-            eprintln!("エラー: {reason}");
+            eprintln!("Error: {reason}");
             return ExitCode::FAILURE;
         }
     };
@@ -263,20 +266,20 @@ fn flash_stage(stage: FlashStage) -> ExitCode {
 fn qmk_build(keymap: Keymap, platform: Platform) -> Result<(), String> {
     let project = Project::from_current_directory().map_err(|error| error.to_string())?;
     let artifact = qmk::build(&project, keymap, platform).map_err(|error| error.to_string())?;
-    println!("SHA-256 が期待する値と一致しました");
-    println!("成果物: {}", artifact.display());
-    println!("公開も配布もしないでください");
+    println!("SHA-256 matches the expected value");
+    println!("Artifact: {}", artifact.display());
+    println!("Do not publish or distribute it");
     Ok(())
 }
 
 fn qmk_hfb(keymap: Keymap, bin: &Path, stock: &Path, out: &Path) -> Result<(), String> {
     let stock = load_verified(stock)?;
-    let bin = fs::read(bin).map_err(|error| format!("{} を読めません: {error}", bin.display()))?;
+    let bin = fs::read(bin).map_err(|error| format!("Cannot read {}: {error}", bin.display()))?;
     qmk::generate(keymap, &stock, &bin, Path::new("local"), out)
         .map_err(|error| error.to_string())?;
-    println!("生成しました: {}", out.display());
-    println!("PFU 製の nRF イメージを含むので、公開も配布もしないでください");
-    println!("書き込む前に hhkb flash plan で許可リストとの一致を確かめてください");
+    println!("Generated: {}", out.display());
+    println!("It contains PFU's nRF image, so do not publish or distribute it");
+    println!("Before writing, confirm that it matches the allowlist with hhkb flash plan");
     Ok(())
 }
 
@@ -293,7 +296,7 @@ fn qmk_command(command: QmkCommand) -> ExitCode {
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(reason) => {
-            eprintln!("エラー: {reason}");
+            eprintln!("Error: {reason}");
             ExitCode::FAILURE
         }
     }
@@ -303,7 +306,7 @@ fn with_hid(run: impl FnOnce(&SystemHid) -> ExitCode) -> ExitCode {
     match SystemHid::new() {
         Ok(hid) => run(&hid),
         Err(error) => {
-            eprintln!("エラー: HID の初期化に失敗しました: {error}");
+            eprintln!("Error: Failed to initialize HID: {error}");
             ExitCode::FAILURE
         }
     }

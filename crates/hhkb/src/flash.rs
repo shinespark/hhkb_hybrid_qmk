@@ -23,9 +23,9 @@ use crate::device::{
 };
 use crate::status::{Pgrep, ProcessCheck, StatusError, qmk_interface_path, vendor_interface_path};
 
-const QMK_WARNING: &str = "QMK を書き込むと保証を受けられなくなる可能性があります。戻せない場合は分解が必要になる可能性があります。途中で止まった場合の復旧は未検証です。";
+const QMK_WARNING: &str = "Writing QMK may void your warranty. If you cannot revert, you may need to disassemble the keyboard. Recovery from an interrupted write is unverified.";
 const UNDETERMINED: &str =
-    "製品名とインターフェースの判断が一致せず、状態を確定できないので送信しません";
+    "Not sending: the product name and the interfaces disagree, so the state cannot be determined";
 
 const VIA_QUERY_TIMEOUT: Duration = Duration::from_secs(1);
 const VERSION_QUERY_TIMEOUT: Duration = Duration::from_secs(1);
@@ -65,17 +65,17 @@ fn abort_at(stage: Stage) -> impl Fn(String) -> Abort {
 
 const fn enter_phrase(kind: HfbKind) -> &'static str {
     match kind {
-        HfbKind::Stock => "enter update mode for stock",
-        HfbKind::QmkDefault => "enter update mode for qmk default",
-        HfbKind::QmkVia => "enter update mode for qmk via",
+        HfbKind::Stock => "enter stock",
+        HfbKind::QmkDefault => "enter default",
+        HfbKind::QmkVia => "enter via",
     }
 }
 
 const fn write_phrase(kind: HfbKind) -> &'static str {
     match kind {
-        HfbKind::Stock => "write stock firmware",
-        HfbKind::QmkDefault => "write qmk default",
-        HfbKind::QmkVia => "write qmk via",
+        HfbKind::Stock => "write stock",
+        HfbKind::QmkDefault => "write default",
+        HfbKind::QmkVia => "write via",
     }
 }
 
@@ -93,7 +93,7 @@ fn open_session<P: Platform>(
     let log = Log::new(platform.open_log(log_name).map_err(&fail)?);
     let device = platform
         .open(path)
-        .map_err(|reason| fail(format!("デバイスを開けません: {reason}")))?;
+        .map_err(|reason| fail(format!("Cannot open the device: {reason}")))?;
     Ok((log, device))
 }
 
@@ -104,7 +104,7 @@ fn update_interface(entries: &[HidEntry]) -> Result<String, String> {
             .map(str::to_owned)
             .map_err(|error| error.to_string()),
         DeviceState::QmkLikely => {
-            Err("QMK の動作中に見えるので更新モードとして扱いません".to_owned())
+            Err("QMK appears to be running, so this is not treated as update mode".to_owned())
         }
         DeviceState::Undetermined => Err(UNDETERMINED.to_owned()),
     }
@@ -129,12 +129,10 @@ fn confirm(
 ) -> Result<(), Abort> {
     let fail = abort_at(stage);
     let line = platform
-        .ask(&format!(
-            "{prompt}\n進めるには次の文を入力してください: {phrase}\n> "
-        ))
-        .map_err(|reason| fail(format!("確認文を読めません: {reason}")))?;
+        .ask(&format!("{prompt}\nTo proceed, type: {phrase}\n> "))
+        .map_err(|reason| fail(format!("Cannot read the confirmation: {reason}")))?;
     if line.trim_end_matches(['\n', '\r']) != phrase {
-        return Err(fail("確認文が一致しないので中止しました".to_owned()));
+        return Err(fail("Aborted: the confirmation did not match".to_owned()));
     }
     Ok(())
 }
@@ -143,18 +141,18 @@ fn version_text(bytes: [u8; 2]) -> String {
     if bytes.iter().all(|digit| *digit <= 9) {
         format!("A0.{}{}", bytes[0], bytes[1])
     } else {
-        "（数字として読めません）".to_owned()
+        "(not numeric)".to_owned()
     }
 }
 
 fn check_version(response: &[u8], hfb: &VerifiedHfb) -> Result<(), String> {
     let bytes = response
         .get(APP_VERSION_OFFSET..APP_VERSION_OFFSET + 2)
-        .ok_or_else(|| "応答から実機の版を読み取れません".to_owned())?;
+        .ok_or_else(|| "Cannot read the device version from the response".to_owned())?;
     let actual = [bytes[0], bytes[1]];
     if actual != hfb.version_bytes() {
         return Err(format!(
-            "実機の版 {} が HFB の版 {} と異なります",
+            "Device version {} differs from HFB version {}",
             version_text(actual),
             hfb.version()
         ));
@@ -180,12 +178,12 @@ fn wait_for_update_interface(
         if waited >= REPLUG_WAIT {
             log.record_event("interface_not_found");
             return Err(format!(
-                "更新用のインターフェースが見つからないまま待ち時間が切れました。送信していません: {reason}"
+                "Timed out waiting for the update interface. Nothing was sent: {reason}"
             ));
         }
         if !guided {
             println!(
-                "更新用のインターフェースが見つかりません。USB を抜き差ししてください（最大 {} 秒待ちます）",
+                "Update interface not found. Replug the USB cable (waiting up to {} seconds)",
                 REPLUG_WAIT.as_secs()
             );
             guided = true;
@@ -216,7 +214,7 @@ fn enter_from_stock(
         platform,
         Stage::EnterNotSent,
         &format!(
-            "HHKB を更新モードへ移行します（書き込む HFB: {kind}）。実機の版を確認した後、移行のレポートを送信します。本体は書き込みません。{}",
+            "Switching the HHKB to update mode (HFB to write: {kind}). Checks the device version, then sends the mode-change report. Does not write the firmware. {}",
             kind_warning(kind)
         ),
         enter_phrase(kind),
@@ -233,7 +231,7 @@ fn enter_from_stock(
     )
     .map_err(|error: ExchangeError| query_only(error.to_string()))?;
     check_version(&response, hfb).map_err(&query_only)?;
-    println!("実機の版が HFB の版 {} と一致しました", hfb.version());
+    println!("Device version matches HFB version {}", hfb.version());
 
     let attempted = abort_at(Stage::ModeChangeAttempted);
     exchange(
@@ -257,15 +255,15 @@ fn enter_from_qmk(
         .map_err(|error| abort_at(Stage::QmkEnterNotSent)(error.to_string()))?;
     let kind = hfb.kind();
     let plan = if kind.is_qmk() {
-        "移行のレポート（e0）を送信します。"
+        "Sends the mode-change report (e0). "
     } else {
-        "公式ファームウェアへ戻すための移行のレポート（f0）を送信します。VIA の設定は消えます。f0 が拒否されたときは VIA の問い合わせ（01）を送り、応答がなければ e0 を送ります。"
+        "Sends the mode-change report that reverts to stock firmware (f0). VIA settings will be erased. If f0 is refused, sends a VIA query (01), and sends e0 only if there is no answer. "
     };
     confirm(
         platform,
         Stage::QmkEnterNotSent,
         &format!(
-            "QMK の動作中に見えます（書き込む HFB: {kind}）。{plan}本体は書き込みません。{}",
+            "QMK appears to be running (HFB to write: {kind}). {plan}Does not write the firmware. {}",
             kind_warning(kind)
         ),
         enter_phrase(kind),
@@ -295,13 +293,13 @@ fn qmk_enter_for_stock(device: &mut impl ReportChannel, log: &mut Log) -> Result
     if answer == RevertAnswer::Accepted {
         return Ok(stage);
     }
-    println!("f0 が拒否されました。VIA の問い合わせを送ります");
+    println!("f0 was refused. Sending a VIA query");
     let refused = abort_at(Stage::QmkRevertRefused);
     let answered = qmk_via_answers(device, log, VIA_QUERY_TIMEOUT)
         .map_err(|error| refused(error.to_string()))?;
     if answered {
         return Err(refused(
-            "f0 が拒否され、VIA の問い合わせに応答があったので移行しません".to_owned(),
+            "Not switching: f0 was refused and VIA answered the query".to_owned(),
         ));
     }
     qmk_enter_with_e0(device, log)
@@ -310,25 +308,25 @@ fn qmk_enter_for_stock(device: &mut impl ReportChannel, log: &mut Log) -> Result
 fn finish_enter(platform: &mut impl Platform, log: &mut Log, stage: Stage) -> Result<(), Abort> {
     let attempted = abort_at(stage);
     println!(
-        "移行のレポートの応答を確認しました。再列挙を {} 秒待ちます",
+        "Mode-change report acknowledged. Waiting {} seconds for re-enumeration",
         SETTLE_WAIT.as_secs()
     );
 
     let new_path = wait_for_update_interface(platform, log).map_err(&attempted)?;
     let reopened = platform.open(&new_path).map_err(|reason| {
         attempted(format!(
-            "再列挙されたインターフェースを開けません。送信していません: {reason}"
+            "Cannot open the re-enumerated interface. Nothing was sent: {reason}"
         ))
     })?;
     drop(reopened);
     log.record_event("interface_opened");
-    println!("再列挙されたインターフェースを開けました。本体は送信していません");
-    println!("次の手順:");
-    println!("  1. HHKB からキー入力できないことを確かめます（USB の表示では区別できません）");
+    println!("Opened the re-enumerated interface. The firmware was not sent");
+    println!("Next steps:");
     println!(
-        "  2. caffeinate -i cargo run -p hhkb -- flash write <HFB のパス> で本体を書き込みます"
+        "  1. Confirm that the HHKB cannot type (the USB listing cannot tell the states apart)"
     );
-    println!("     HHKB から入力できないので、確認文は別のキーボードで入力します");
+    println!("  2. Write the firmware: caffeinate -i cargo run -p hhkb -- flash write <HFB path>");
+    println!("     The HHKB cannot type, so enter the confirmation on another keyboard");
     Ok(())
 }
 
@@ -339,7 +337,7 @@ fn write_with(platform: &mut impl Platform, hfb: &VerifiedHfb) -> Result<(), Abo
         DeviceState::StockOrUpdate => {}
         DeviceState::QmkLikely => {
             return Err(not_sent(
-                "QMK の動作中に見えるので本体を書き込みません。先に hhkb flash enter で更新モードへ移行してください"
+                "Not writing: QMK appears to be running. Run hhkb flash enter first to switch to update mode"
                     .to_owned(),
             ));
         }
@@ -351,7 +349,7 @@ fn write_with(platform: &mut impl Platform, hfb: &VerifiedHfb) -> Result<(), Abo
         platform,
         Stage::WriteNotSent,
         &format!(
-            "本体を書き込みます（書き込む HFB: {kind}）。HHKB からキー入力できないこと（更新モードの可能性が高いこと）を確かめてください。入力できるときは実行しないでください。確認文は別のキーボードで入力します。{}",
+            "Writing the firmware (HFB to write: {kind}). Confirm that the HHKB cannot type (it is likely in update mode). Do not proceed if it can type. Enter the confirmation on another keyboard. {}",
             kind_warning(kind)
         ),
         write_phrase(kind),
@@ -365,7 +363,7 @@ fn write_with(platform: &mut impl Platform, hfb: &VerifiedHfb) -> Result<(), Abo
         RESPONSE_TIMEOUT,
         &mut |sent, total| {
             if sent % PROGRESS_INTERVAL == 0 || sent == total {
-                println!("送信 {sent}/{total}");
+                println!("Sent {sent}/{total}");
             }
         },
     )
@@ -382,13 +380,13 @@ fn write_with(platform: &mut impl Platform, hfb: &VerifiedHfb) -> Result<(), Abo
             reason: failure.error.to_string(),
         }
     })?;
-    println!("終了のレポートの応答を確認しました");
+    println!("End report acknowledged");
     if kind.is_qmk() {
         println!(
-            "次の手順: USB の表示（hhkb list）とキー入力を確認します。QMK の動作中は公式ツールを起動しないでください"
+            "Next: check the USB listing (hhkb list) and key input. Do not start the official tool while QMK is running"
         );
     } else {
-        println!("次の手順: USB の表示（hhkb list）、キー入力、hhkb status の順に確認します");
+        println!("Next: check the USB listing (hhkb list), key input, then hhkb status");
     }
     Ok(())
 }
@@ -406,7 +404,7 @@ impl Platform for SystemPlatform {
 
     fn enumerate(&mut self) -> Vec<HidEntry> {
         if let Err(error) = self.api.refresh_devices() {
-            eprintln!("警告: デバイスの一覧を更新できません: {error}");
+            eprintln!("Warning: cannot refresh the device list: {error}");
             return Vec::new();
         }
         self.api.device_list().map(HidEntry::from).collect()
@@ -435,9 +433,7 @@ impl Platform for SystemPlatform {
         create_log_file(Path::new(LOG_PARENT), stage)
             .map(|file| Box::new(file) as Box<dyn Write>)
             .map_err(|error| {
-                format!(
-                    "ログを作れないので中止しました。リポジトリのルートで実行してください: {error}"
-                )
+                format!("Aborted: cannot create the log. Run from the repository root: {error}")
             })
     }
 }
@@ -447,7 +443,7 @@ fn system_platform(stage: Stage) -> Result<SystemPlatform, Abort> {
         .map(|api| SystemPlatform { api })
         .map_err(|error| Abort {
             stage,
-            reason: format!("HID の初期化に失敗しました: {error}"),
+            reason: format!("Failed to initialize HID: {error}"),
         })
 }
 
@@ -533,7 +529,7 @@ mod tests {
 
         fn receive(&mut self, _timeout: Duration) -> Result<Option<Vec<u8>>, String> {
             let shared = self.shared.borrow();
-            let frame = shared.sent.last().expect("送信の前に受信しない");
+            let frame = shared.sent.last().expect("no receive before a send");
             match self.replies.get(&frame[2]) {
                 Some(Reply::Bytes(bytes)) => Ok(Some(bytes.clone())),
                 Some(Reply::Nothing) => Ok(None),
@@ -619,7 +615,7 @@ mod tests {
         fn open(&mut self, path: &str) -> Result<MockDevice, String> {
             self.opened.push(path.to_owned());
             if self.open_failures.pop_front().unwrap_or(false) {
-                return Err("開けません".to_owned());
+                return Err("cannot open".to_owned());
             }
             Ok(MockDevice {
                 shared: Rc::clone(&self.shared),
@@ -638,7 +634,7 @@ mod tests {
 
         fn open_log(&mut self, _stage: &str) -> Result<Box<dyn Write>, String> {
             if self.log_fails {
-                return Err("ログを作れません".to_owned());
+                return Err("cannot create log".to_owned());
             }
             self.logs_opened += 1;
             Ok(Box::new(self.log.clone()))
@@ -740,7 +736,7 @@ mod tests {
     #[test]
     fn failed_tool_check_stops_enter_before_opening() {
         let mut platform = enter_platform();
-        platform.tool = Err("pgrep 失敗".to_owned());
+        platform.tool = Err("pgrep failed".to_owned());
         assert!(enter_with(&mut platform, &hfb()).is_err());
         assert!(platform.opened.is_empty());
     }
@@ -778,11 +774,11 @@ mod tests {
             "",
             "\n",
             "yes\n",
-            "ENTER UPDATE MODE FOR STOCK\n",
-            "enter update mode for stock \n",
-            "enter update mode\n",
-            "enter update mode for qmk default\n",
-            "write stock firmware\n",
+            "ENTER STOCK\n",
+            "enter stock \n",
+            "enter\n",
+            "enter default\n",
+            "write stock\n",
         ] {
             let mut platform = enter_platform();
             platform.answer = Ok(answer.to_owned());
@@ -795,7 +791,7 @@ mod tests {
     #[test]
     fn failed_confirmation_read_stops_enter() {
         let mut platform = enter_platform();
-        platform.answer = Err("読めません".to_owned());
+        platform.answer = Err("cannot read".to_owned());
         assert!(enter_with(&mut platform, &hfb()).is_err());
         assert!(platform.opened.is_empty());
     }
@@ -1107,8 +1103,8 @@ mod tests {
             platform.replies.insert(command, Reply::Nothing);
             let abort = enter_with(&mut platform, &verified_synthetic_as(kind)).unwrap_err();
             assert_eq!(abort.stage, Stage::QmkModeChangeAttempted { command });
-            assert!(abort.guidance().contains("Esc を押しながら"));
-            assert!(abort.guidance().contains("未検証"));
+            assert!(abort.guidance().contains("holding Esc"));
+            assert!(abort.guidance().contains("unverified"));
             assert_eq!(platform.commands(), [command], "{kind:?}");
         }
     }
@@ -1268,7 +1264,7 @@ mod tests {
             for prompt in [&enter.prompts[0], &write.prompts[0]] {
                 assert!(prompt.contains(&kind.to_string()), "{prompt}");
                 assert_eq!(
-                    prompt.contains("保証") && prompt.contains("分解"),
+                    prompt.contains("warranty") && prompt.contains("disassemble"),
                     kind != HfbKind::Stock,
                     "{prompt}"
                 );
@@ -1280,7 +1276,7 @@ mod tests {
     fn stock_prompt_from_qmk_says_via_settings_are_erased() {
         let mut platform = qmk_platform(HfbKind::Stock);
         enter_with(&mut platform, &hfb()).unwrap();
-        assert!(platform.prompts[0].contains("VIA の設定は消えます"));
+        assert!(platform.prompts[0].contains("VIA settings will be erased"));
     }
 
     #[test]

@@ -81,21 +81,21 @@ impl fmt::Display for BuildError {
             Self::Project(reason) => write!(f, "{reason}"),
             Self::CommitMismatch { directory, actual } => write!(
                 f,
-                "{} のコミット {actual} が固定した値と異なるので、ビルドしません",
+                "Not building: commit {actual} of {} differs from the pinned value",
                 directory.display()
             ),
-            Self::Git(reason) => write!(f, "Git の確認に失敗したので、ビルドしません: {reason}"),
+            Self::Git(reason) => write!(f, "Not building: the Git check failed: {reason}"),
             Self::LocalChanges { directory } => write!(
                 f,
-                "{} に未コミットの変更があるので、ビルドしません",
+                "Not building: {} has uncommitted changes",
                 directory.display()
             ),
-            Self::Output(reason) => write!(f, "出力先を用意できません: {reason}"),
-            Self::Docker(reason) => write!(f, "Docker でのビルドに失敗しました: {reason}"),
-            Self::Artifact(reason) => write!(f, "成果物を読めません: {reason}"),
+            Self::Output(reason) => write!(f, "Cannot prepare the output directory: {reason}"),
+            Self::Docker(reason) => write!(f, "Docker build failed: {reason}"),
+            Self::Artifact(reason) => write!(f, "Cannot read the artifact: {reason}"),
             Self::HashMismatch { expected, actual } => write!(
                 f,
-                ".bin の SHA-256 が期待する値と一致しません（期待 {expected}、実際 {actual}）"
+                "The .bin SHA-256 does not match the expected value (expected {expected}, actual {actual})"
             ),
         }
     }
@@ -253,11 +253,11 @@ impl Host for SystemHost {
         let status = Command::new("docker")
             .args(arguments)
             .status()
-            .map_err(|error| format!("docker を実行できません: {error}"))?;
+            .map_err(|error| format!("Cannot run docker: {error}"))?;
         if status.success() {
             Ok(())
         } else {
-            Err(format!("docker が {status} で終了しました"))
+            Err(format!("docker exited with {status}"))
         }
     }
 
@@ -272,7 +272,7 @@ impl Project {
             std::env::current_dir().map_err(|error| BuildError::Project(error.to_string()))?;
         if !root.join("local").is_dir() || !root.join(REFERENCE_DIRECTORY).is_dir() {
             return Err(BuildError::Project(
-                "local/ と third_party/hhkb_hybrid が見つかりません。リポジトリのルートで実行してください"
+                "local/ and third_party/hhkb_hybrid not found. Run from the repository root"
                     .to_owned(),
             ));
         }
@@ -416,7 +416,7 @@ mod tests {
     fn unreadable_commit_stops_before_docker() {
         let mut host = MockHost::good();
         host.heads
-            .insert(project().root.join(REFERENCE), Err("git 失敗".to_owned()));
+            .insert(project().root.join(REFERENCE), Err("git failed".to_owned()));
         assert!(matches!(run(&host), Err(BuildError::Git(_))));
         assert!(host.docker_calls.borrow().is_empty());
     }
@@ -457,14 +457,14 @@ mod tests {
     #[test]
     fn docker_failure_is_reported() {
         let mut host = MockHost::good();
-        host.docker_result = Err("終了コード 1".to_owned());
+        host.docker_result = Err("exit code 1".to_owned());
         assert!(matches!(run(&host), Err(BuildError::Docker(_))));
     }
 
     #[test]
     fn missing_artifact_is_reported() {
         let mut host = MockHost::good();
-        host.bin = Err("ありません".to_owned());
+        host.bin = Err("missing".to_owned());
         assert!(matches!(run(&host), Err(BuildError::Artifact(_))));
     }
 

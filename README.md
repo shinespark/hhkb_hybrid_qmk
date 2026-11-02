@@ -80,7 +80,7 @@ cargo run -p hhkb -- qmk hfb via --bin local/qmk-build/via-arm64/hhkb_hybrid_via
    cargo run -p hhkb -- flash plan local/hhkb_hybrid_via.hfb
    ```
 
-2. 更新モードへ移行します。確認文は `enter update mode for qmk via` です
+2. 更新モードへ移行します。確認文は `enter via` です
 
    ```sh
    cargo run -p hhkb -- flash enter local/hhkb_hybrid_via.hfb
@@ -88,7 +88,7 @@ cargo run -p hhkb -- qmk hfb via --bin local/qmk-build/via-arm64/hhkb_hybrid_via
 
 3. HHKB からキー入力できないことを確認します。USB の表示では公式ファームウェアと更新モードを区別できません。キー入力できるときは次へ進まないでください
 
-4. 本体を書き込みます。確認文は `write qmk via` で、別のキーボードで入力します
+4. 本体を書き込みます。確認文は `write via` で、別のキーボードで入力します
 
    ```sh
    caffeinate -i cargo run -p hhkb -- flash write local/hhkb_hybrid_via.hfb
@@ -111,7 +111,7 @@ cargo run -p hhkb -- flash enter local/HHKB800_FW_A048.hfb
 caffeinate -i cargo run -p hhkb -- flash write local/HHKB800_FW_A048.hfb
 ```
 
-確認文は、`flash enter` が `enter update mode for stock`、`flash write` が `write stock firmware` です。
+確認文は、`flash enter` が `enter stock`、`flash write` が `write stock` です。
 
 `via` から戻すと VIA の設定が消え、公式ファームウェアのキーマップが既定の配置に変わることがあります。`via` を書き込む前に `.hks` を保存し、戻した後に公式ツールで復元してください。
 

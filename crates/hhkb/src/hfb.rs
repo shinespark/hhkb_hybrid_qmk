@@ -16,9 +16,9 @@ pub(crate) const VERSION_FIELD: usize = 0x45028;
 
 const IDENTIFIER_SIZE: usize = 6;
 const IDENTIFIER_TERMINATOR: [u8; 2] = *b"\n\0";
-const KNOWN_MODELS: &[(&str, &str)] = &[("AHUX01", "PD-KB800BNS 向けの公式 HFB で観測")];
+const KNOWN_MODELS: &[(&str, &str)] = &[("AHUX01", "observed in the stock HFB for PD-KB800BNS")];
 
-const CRC16_ALGORITHM: &str = "CRC-16（多項式 0x1021、反転あり、初期値 0xffff）";
+const CRC16_ALGORITHM: &str = "CRC-16 (polynomial 0x1021, reflected, initial 0xffff)";
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum HfbError {
@@ -31,11 +31,11 @@ impl fmt::Display for HfbError {
         match self {
             Self::TooShort { actual } => write!(
                 f,
-                "ファイルが短すぎます（{actual} バイト、ヘッダは {HEADER_SIZE} バイト）"
+                "File is too short ({actual} bytes, header is {HEADER_SIZE} bytes)"
             ),
             Self::UnexpectedSize { actual } => write!(
                 f,
-                "想定する構造と一致しません（0x{actual:x} バイト、想定は 0x{FILE_SIZE:x} バイト）"
+                "Unexpected structure (0x{actual:x} bytes, expected 0x{FILE_SIZE:x} bytes)"
             ),
         }
     }
@@ -118,12 +118,12 @@ pub fn inspect(data: &[u8]) -> Result<Report, HfbError> {
         checks: vec![
             crc_check(
                 data,
-                "全体 CRC",
+                "Whole CRC",
                 WHOLE_CRC_FIELD,
                 REGION_A_CRC_FIELD,
                 FILE_SIZE,
             ),
-            crc_check(data, "領域 A CRC", REGION_A_CRC_FIELD, REGION_A, PADDING),
+            crc_check(data, "Region A CRC", REGION_A_CRC_FIELD, REGION_A, PADDING),
             md5_check(data),
         ],
         model: read_model(data),
@@ -133,13 +133,13 @@ pub fn inspect(data: &[u8]) -> Result<Report, HfbError> {
 
 fn regions() -> Vec<Region> {
     [
-        ("全体 CRC", WHOLE_CRC_FIELD, REGION_A_CRC_FIELD),
-        ("領域 A CRC", REGION_A_CRC_FIELD, REGION_A),
-        ("領域 A", REGION_A, PADDING),
-        ("詰め物", PADDING, MD5_FIELD),
-        ("領域 B MD5", MD5_FIELD, REGION_B),
-        ("領域 B", REGION_B, FOOTER),
-        ("フッタ", FOOTER, FILE_SIZE),
+        ("Whole CRC", WHOLE_CRC_FIELD, REGION_A_CRC_FIELD),
+        ("Region A CRC", REGION_A_CRC_FIELD, REGION_A),
+        ("Region A", REGION_A, PADDING),
+        ("Padding", PADDING, MD5_FIELD),
+        ("Region B MD5", MD5_FIELD, REGION_B),
+        ("Region B", REGION_B, FOOTER),
+        ("Footer", FOOTER, FILE_SIZE),
     ]
     .into_iter()
     .map(|(name, start, end)| Region {
@@ -164,7 +164,7 @@ fn crc_check(data: &[u8], name: &'static str, field: usize, start: usize, end: u
 
 fn md5_check(data: &[u8]) -> Check {
     Check {
-        name: "領域 B MD5",
+        name: "Region B MD5",
         algorithm: "MD5",
         start: REGION_B,
         end: FOOTER,
@@ -186,7 +186,7 @@ fn read_model(data: &[u8]) -> Determination {
         .iter()
         .find(|(known, _)| known.as_bytes() == identifier)
         .map_or(Determination::Undetermined, |(known, note)| {
-            Determination::Known(format!("{known}（{note}）"))
+            Determination::Known(format!("{known} ({note})"))
         })
 }
 

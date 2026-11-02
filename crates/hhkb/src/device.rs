@@ -85,15 +85,15 @@ impl fmt::Display for SelectError {
         match self {
             Self::NotFound => write!(
                 f,
-                "USB 接続の HHKB (04fe:0021) が見つかりません。ケーブルと接続を確認してください"
+                "No USB-connected HHKB (04fe:0021) found. Check the cable and connection"
             ),
             Self::MissingVendorInterface => write!(
                 f,
-                "ベンダー定義のインターフェース (Usage Page 0xFF00 または 0xFF60) が見つかりません。USB を接続し直してください"
+                "Vendor-defined interface (Usage Page 0xFF00 or 0xFF60) not found. Reconnect USB"
             ),
             Self::Multiple(count) => write!(
                 f,
-                "USB 接続の HHKB が {count} 台見つかりました。対象の 1 台だけを接続してください"
+                "Found {count} USB-connected HHKBs. Connect only the target"
             ),
         }
     }

@@ -31,24 +31,24 @@ impl fmt::Display for GenerateError {
         match self {
             Self::TooLarge { actual } => write!(
                 f,
-                ".bin が領域 A より大きいので生成しません（0x{actual:x} バイト、上限 0x{APP_SIZE:x} バイト）"
+                "Not generating: the .bin is larger than region A (0x{actual:x} bytes, limit 0x{APP_SIZE:x} bytes)"
             ),
-            Self::EmptyBinary => write!(f, ".bin が空なので生成しません"),
+            Self::EmptyBinary => write!(f, "Not generating: the .bin is empty"),
             Self::BinaryNotAllowed { sha256 } => {
                 write!(
                     f,
-                    "許可リストにない .bin なので生成しません（SHA-256: {sha256}）"
+                    "Not generating: the .bin is not in the allowlist (SHA-256: {sha256})"
                 )
             }
             Self::TemplateNotStock => {
                 write!(
                     f,
-                    "テンプレートが公式ファームウェアの HFB ではないので生成しません"
+                    "Not generating: the template is not a stock firmware HFB"
                 )
             }
-            Self::Write(reason) => write!(f, "出力先に書き込めません: {reason}"),
-            Self::OutsideLocal => write!(f, "出力先は local/ の中を指定してください"),
-            Self::Invalid => write!(f, "生成した内容が検査に通らないので、書き出しません"),
+            Self::Write(reason) => write!(f, "Cannot write to the output path: {reason}"),
+            Self::OutsideLocal => write!(f, "The output path must be inside local/"),
+            Self::Invalid => write!(f, "Not writing: the generated image failed verification"),
         }
     }
 }
