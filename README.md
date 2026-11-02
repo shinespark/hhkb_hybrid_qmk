@@ -215,8 +215,3 @@ USB に表示されないとき:
 - 電源を切った後の設定の保持
 - 読み出しに現れないファームウェア内部の状態
 - 他の個体と他の機種での動作
-
-## ドキュメント
-
-- [解析記録](docs/analysis/findings.md)
-- [通信の記録](docs/analysis/traffic-capture.md)
