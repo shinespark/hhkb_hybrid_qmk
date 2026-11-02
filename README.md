@@ -22,10 +22,10 @@ HHKB Professional Hybrid（英語配列）を QMK 化して macOS から書き�
 ## 必要なもの
 
 - macOS と Rust のツールチェーン
-- 純正の更新ファイル `local/HHKB800_FW_A048.hfb`。本リポジトリには含まないので、利用者自身で用意してください。SHA-256 は[解析記録](docs/analysis/findings.md#hfb-の構造)にあります
-- QMK のビルドに使う Docker Desktop
-- 書き込みに失敗したときに使う [Linux の環境](docs/analysis/findings.md#linux-からの復旧手順)
-- 更新モードの間に入力する別のキーボード
+- 純正の更新ファイル `local/HHKB800_FW_A048.hfb`。本リポジトリには含まないので、利用者自身で用意してください
+- Docker Desktop
+- もう 1 枚のキーボード
+- macOS から戻せないときに使う [Linux の環境](docs/analysis/findings.md#linux-からの復旧手順)
 
 ## 全体の流れ
 
@@ -56,7 +56,7 @@ HHKB Professional Hybrid（英語配列）を QMK 化して macOS から書き�
 
 ### 実行前の注意
 
-- 書き込みは保証に影響する可能性があります。失敗したときは Linux からの復旧が必要で、最終手段は分解です
+- 書き込みは保証に影響する可能性があります。失敗したときは、表示された案内に従って `hhkb flash write` のやり直しを判断します。macOS から戻せないときは Linux から復旧し、最終手段は分解です
 - 実行する前に、[Linux からの復旧手順](docs/analysis/findings.md#linux-からの復旧手順) を実行できる環境を用意してください。この手順でも、途中で止まった状態から戻せることは未検証です
 - 実機の設定を公式ツールで `.hks` に保存してください
 - 公式ツールを閉じ、USB に接続する HHKB を 1 台にして、ハブを使わず直結してください
