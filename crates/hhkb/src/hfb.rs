@@ -16,7 +16,7 @@ pub(crate) const VERSION_FIELD: usize = 0x45028;
 
 const IDENTIFIER_SIZE: usize = 6;
 const IDENTIFIER_TERMINATOR: [u8; 2] = *b"\n\0";
-const KNOWN_MODELS: &[(&str, &str)] = &[("AHUX01", "PD-KB800BNS 向けの純正 HFB で観測")];
+const KNOWN_MODELS: &[(&str, &str)] = &[("AHUX01", "PD-KB800BNS 向けの公式 HFB で観測")];
 
 const CRC16_ALGORITHM: &str = "CRC-16（多項式 0x1021、反転あり、初期値 0xffff）";
 

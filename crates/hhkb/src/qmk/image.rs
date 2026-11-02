@@ -41,7 +41,10 @@ impl fmt::Display for GenerateError {
                 )
             }
             Self::TemplateNotStock => {
-                write!(f, "テンプレートが純正の HFB ではないので生成しません")
+                write!(
+                    f,
+                    "テンプレートが公式ファームウェアの HFB ではないので生成しません"
+                )
             }
             Self::Write(reason) => write!(f, "出力先に書き込めません: {reason}"),
             Self::OutsideLocal => write!(f, "出力先は local/ の中を指定してください"),
