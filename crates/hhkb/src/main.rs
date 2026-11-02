@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
-use hhkb::device::{HidEntry, HidEnumerator, Target, select_target};
+use hhkb::device::{DeviceState, HidEntry, HidEnumerator, Target, select_target};
 use hhkb::flash::{self, Abort, VerifiedHfb};
 use hhkb::hfb::{Determination, Report, inspect};
 use hhkb::qmk::{self, Keymap, Platform, Project};
@@ -24,7 +24,7 @@ enum Command {
     Inspect {
         path: PathBuf,
     },
-    /// 許可した純正 HFB を段階を分けて書き込む
+    /// 許可した HFB（純正、QMK の default と via）を段階を分けて書き込む
     Flash {
         #[command(subcommand)]
         stage: FlashStage,
@@ -60,9 +60,9 @@ enum QmkCommand {
 
 #[derive(Subcommand)]
 enum FlashStage {
-    /// HFB を検査し、パケット数と接続状況を表示する。実機には送信しない
+    /// HFB を検査し、種類、パケット数、接続状況を表示する。実機には送信しない
     Plan { path: PathBuf },
-    /// 実機の版を確認して更新モードへ移行する。本体は書き込まない
+    /// 更新モードへ移行する。純正 FW の動作中は実機の版を確認する。本体は書き込まない
     Enter { path: PathBuf },
     /// 更新モードの実機に本体を書き込む
     Write { path: PathBuf },
@@ -99,7 +99,15 @@ fn print_target(target: &Target) {
         println!("  {}  {}", interface.path, usages.join(", "));
     }
     println!(
-        "状態: 純正 FW または更新モード（この情報では区別できません。キー入力の可否で確認してください）"
+        "状態: {}",
+        match target.state {
+            DeviceState::StockOrUpdate =>
+                "純正 FW または更新モード（この情報では区別できません。キー入力の可否で確認してください）",
+            DeviceState::QmkLikely =>
+                "QMK の動作中の可能性が高い（製品名とインターフェースからの判断です。公式ツールを起動しないでください）",
+            DeviceState::Undetermined =>
+                "確定できません（製品名とインターフェースの判断が一致しません）。書き込みの段階には進みません",
+        }
     );
 }
 
@@ -121,7 +129,13 @@ fn status(hid: &SystemHid) -> ExitCode {
         Ok(status) => {
             print_target(&status.target);
             if status.received.is_empty() {
-                println!("承認済みのレポートがないので、デバイスを開かず、何も送信していません");
+                if status.target.state == DeviceState::StockOrUpdate {
+                    println!(
+                        "承認済みのレポートがないので、デバイスを開かず、何も送信していません"
+                    );
+                } else {
+                    println!("純正 FW に見えないので、デバイスを開かず、何も送信していません");
+                }
             }
             for received in &status.received {
                 println!(
@@ -203,6 +217,7 @@ fn load_verified(path: &Path) -> Result<VerifiedHfb, String> {
 fn flash_plan(hid: &SystemHid, hfb: &VerifiedHfb) -> ExitCode {
     print_report(hfb.report());
     println!("SHA-256: {}（許可リストと一致）", hfb.sha256());
+    println!("種類: {}", hfb.kind());
     let plan = flash::plan(hfb, hid);
     println!("本体の送信: {} パケット", plan.packets);
     println!("接続状況:");
@@ -259,7 +274,7 @@ fn qmk_hfb(keymap: Keymap, bin: &Path, stock: &Path, out: &Path) -> Result<(), S
         .map_err(|error| error.to_string())?;
     println!("生成しました: {}", out.display());
     println!("PFU 製の nRF イメージを含むので、公開も配布もしないでください");
-    println!("hhkb flash の許可リストには入っていないので、このままでは書き込めません");
+    println!("書き込む前に hhkb flash plan で許可リストとの一致を確かめてください");
     Ok(())
 }
 

@@ -6,8 +6,43 @@ use crate::hfb::{
     Check, Determination, FILE_SIZE, HfbError, Report, VERSION_FIELD, inspect, to_hex,
 };
 
-const ALLOWED_SHA256: &[&str] =
-    &["635b995eb5a15aa50c2cedc60da7d8998fcca8285a09d41d984c07fffcaf9d43"];
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HfbKind {
+    Stock,
+    QmkDefault,
+    QmkVia,
+}
+
+impl HfbKind {
+    pub const fn is_qmk(self) -> bool {
+        matches!(self, Self::QmkDefault | Self::QmkVia)
+    }
+}
+
+impl fmt::Display for HfbKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Stock => "純正",
+            Self::QmkDefault => "QMK の default",
+            Self::QmkVia => "QMK の via",
+        })
+    }
+}
+
+const ALLOWED: &[(&str, HfbKind)] = &[
+    (
+        "635b995eb5a15aa50c2cedc60da7d8998fcca8285a09d41d984c07fffcaf9d43",
+        HfbKind::Stock,
+    ),
+    (
+        "abc86297c4f0d4d967fe9e1bfa8b5491b4a99873afb58e57d93d2f3ebf1cdcf4",
+        HfbKind::QmkDefault,
+    ),
+    (
+        "1393125de1bd6b24c64b424b1398e1fe1aa1e104f26609fc045130a2042e223e",
+        HfbKind::QmkVia,
+    ),
+];
 
 const BODY_OFFSET: usize = 2;
 const CHUNK_SIZE: usize = 57;
@@ -46,18 +81,23 @@ pub struct VerifiedHfb {
     report: Report,
     sha256: String,
     version: String,
+    kind: HfbKind,
 }
 
 impl VerifiedHfb {
     pub fn verify(data: Vec<u8>) -> Result<Self, VerifyError> {
-        Self::verify_against(data, ALLOWED_SHA256)
+        Self::verify_against(data, ALLOWED)
     }
 
-    pub(super) fn verify_against(data: Vec<u8>, allowed: &[&str]) -> Result<Self, VerifyError> {
+    pub(super) fn verify_against(
+        data: Vec<u8>,
+        allowed: &[(&str, HfbKind)],
+    ) -> Result<Self, VerifyError> {
         let sha256 = to_hex(&Sha256::digest(&data));
-        if !allowed.contains(&sha256.as_str()) {
+        let Some((_, kind)) = allowed.iter().find(|(hash, _)| *hash == sha256) else {
             return Err(VerifyError::NotAllowed { sha256 });
-        }
+        };
+        let kind = *kind;
         let report = inspect(&data).map_err(VerifyError::Structure)?;
         let failed: Vec<&'static str> = report
             .checks
@@ -80,11 +120,16 @@ impl VerifiedHfb {
             report,
             sha256,
             version,
+            kind,
         })
     }
 
     pub fn report(&self) -> &Report {
         &self.report
+    }
+
+    pub fn kind(&self) -> HfbKind {
+        self.kind
     }
 
     pub fn sha256(&self) -> &str {
@@ -171,7 +216,7 @@ mod tests {
 
     fn verify_allowing_itself(data: Vec<u8>) -> Result<VerifiedHfb, VerifyError> {
         let sha256 = sha256_hex(&data);
-        VerifiedHfb::verify_against(data, &[sha256.as_str()])
+        VerifiedHfb::verify_against(data, &[(sha256.as_str(), HfbKind::Stock)])
     }
 
     #[test]
@@ -183,7 +228,7 @@ mod tests {
     fn file_outside_the_allowlist_is_rejected() {
         let data = synthetic();
         let sha256 = sha256_hex(&data);
-        let result = VerifiedHfb::verify_against(data, &["00"]);
+        let result = VerifiedHfb::verify_against(data, &[("00", HfbKind::Stock)]);
         assert_eq!(result.unwrap_err(), VerifyError::NotAllowed { sha256 });
     }
 
@@ -237,11 +282,52 @@ mod tests {
     }
 
     #[test]
-    fn the_shipped_allowlist_holds_only_the_stock_a048_hash() {
+    fn the_shipped_allowlist_holds_exactly_the_three_hashes_with_their_kinds() {
         assert_eq!(
-            super::ALLOWED_SHA256,
-            ["635b995eb5a15aa50c2cedc60da7d8998fcca8285a09d41d984c07fffcaf9d43"]
+            super::ALLOWED,
+            [
+                (
+                    "635b995eb5a15aa50c2cedc60da7d8998fcca8285a09d41d984c07fffcaf9d43",
+                    HfbKind::Stock
+                ),
+                (
+                    "abc86297c4f0d4d967fe9e1bfa8b5491b4a99873afb58e57d93d2f3ebf1cdcf4",
+                    HfbKind::QmkDefault
+                ),
+                (
+                    "1393125de1bd6b24c64b424b1398e1fe1aa1e104f26609fc045130a2042e223e",
+                    HfbKind::QmkVia
+                ),
+            ]
         );
+    }
+
+    #[test]
+    fn the_kind_comes_from_the_matching_entry() {
+        let data = synthetic();
+        let sha256 = sha256_hex(&data);
+        let hfb = VerifiedHfb::verify_against(
+            data,
+            &[("00", HfbKind::Stock), (sha256.as_str(), HfbKind::QmkVia)],
+        )
+        .unwrap();
+        assert_eq!(hfb.kind(), HfbKind::QmkVia);
+    }
+
+    #[test]
+    #[ignore = "local/ の 3 つの実物の HFB が必要"]
+    fn the_real_files_have_the_expected_kinds() {
+        let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../../local");
+        for (name, kind) in [
+            ("HHKB800_FW_A048.hfb", HfbKind::Stock),
+            ("hhkb_hybrid_default.hfb", HfbKind::QmkDefault),
+            ("hhkb_hybrid_via.hfb", HfbKind::QmkVia),
+        ] {
+            let data = std::fs::read(format!("{root}/{name}")).unwrap();
+            let hfb = VerifiedHfb::verify(data).unwrap();
+            assert_eq!(hfb.kind(), kind, "{name}");
+            assert_eq!(hfb.version(), "A0.48", "{name}");
+        }
     }
 
     #[test]
