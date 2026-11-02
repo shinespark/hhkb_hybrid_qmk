@@ -1,4 +1,4 @@
-# hhkb_hybrid_qmk
+# HHKB Hybrid QMK
 
 HHKB Professional Hybrid（英語配列）向けの QMK をビルドし、macOS から書き込む非公式の CLI です。公式ファームウェアへ戻すこともできます。
 
@@ -20,11 +20,29 @@ VIA でキーマップを Dvorak 配列に変更した例です。
 
 ![VIA のレイヤー 1 の画面](docs/images/via-fn-layer.png)
 
-Fn キーを押している間に使うレイヤー 1 の例です。右下の下矢印キーの割り当ては、公式のキーマップ変更ツールではできませんでしたが、VIA ではできます。
+Fn キーを押している間に使うレイヤー 1 の例です。右下の下矢印キーの割り当ては、公式のキーマップ変更ツールではできませんでしたが、VIA ではできるようになります。
 
 ## 仕組み
 
-HHKB の更新モードを使って、キーボードのファームウェアを QMK に置き換えます。分解は不要です。
+HHKB の更新モードを使って、キーボードのファームウェアを QMK に置き換えます。
+
+HHKB には、キー入力を処理する STM32 と、Bluetooth を担当する nRF の 2 つのチップがあります。QMK を書き込む先は、STM32 のアプリ領域です。
+
+| 書き込み先 | 公式ファームウェアでの内容 | QMK を適用した後 |
+|---|---|---|
+| STM32 のブートローダ領域 | 起動と更新モードの処理 | 変更しない |
+| STM32 のアプリ領域（64 KiB） | 公式ファームウェア | QMK に置き換わる |
+| STM32 の EEPROM | キーマップと設定 | `via` では VIA の変更をここに保存する |
+| nRF | Bluetooth のファームウェア | 公式のものをそのまま使う |
+
+```mermaid
+flowchart LR
+    source["QMK 本体と<br>キーボード定義"] -->|qmk build| bin[".bin"]
+    bin -->|qmk hfb| hfb["QMK の HFB"]
+    stock["公式の HFB"] -->|qmk hfb| hfb
+    hfb -->|"flash prepare<br>flash write"| hhkb["HHKB"]
+    via["VIA（ブラウザ）"] <-->|キーマップの読み書き| hhkb
+```
 
 1. **QMK のビルド（`qmk build`）**: [参考実装](https://github.com/l3tnun/hhkb_hybrid)にある HHKB 用のキーボード定義と QMK 本体を Docker でビルドし、`.bin` を作ります
 2. **更新ファイルの生成（`qmk hfb`）**: 公式の更新ファイル（HFB）のうち、キー入力を処理する STM32 のアプリ領域を `.bin` に置き換え、チェックサムを計算し直します。Bluetooth を担当する nRF のイメージは公式のものをそのまま使います
@@ -34,7 +52,7 @@ HHKB の更新モードを使って、キーボードのファームウェアを
 
 公式ファームウェアへ戻すときは、公式の HFB を同じ手順で書き込みます。
 
-各領域の用途は参考実装の資料にもとづきます。
+チップと領域の用途は[参考実装の資料](https://github.com/l3tnun/hhkb_hybrid/blob/0099ac64d30a0530714844fe1fcbaff230fc65fa/docs/hardware.md)にもとづきます。
 
 ## 免責事項
 
@@ -160,7 +178,7 @@ USB に表示されないとき:
 3. Esc を押したまま USB を接続する
 4. 別の PC で認識を確認する
 
-最終手段は分解です。詳細は[参考実装の資料](https://github.com/l3tnun/hhkb_hybrid/blob/0099ac64d30a0530714844fe1fcbaff230fc65fa/docs/recovery.md)を参照してください。
+うまくいかないときは、[参考実装の資料](https://github.com/l3tnun/hhkb_hybrid/blob/0099ac64d30a0530714844fe1fcbaff230fc65fa/docs/recovery.md)を参照してください。
 
 ## コマンド
 
