@@ -5,10 +5,10 @@ use md5::{Digest, Md5};
 pub const HEADER_SIZE: usize = 4;
 pub const FILE_SIZE: usize = 0x45030;
 
-const WHOLE_CRC_FIELD: usize = 0x0;
-const REGION_A_CRC_FIELD: usize = 0x2;
-const REGION_A: usize = HEADER_SIZE;
-const PADDING: usize = 0x10004;
+pub(crate) const WHOLE_CRC_FIELD: usize = 0x0;
+pub(crate) const REGION_A_CRC_FIELD: usize = 0x2;
+pub(crate) const REGION_A: usize = HEADER_SIZE;
+pub(crate) const PADDING: usize = 0x10004;
 const MD5_FIELD: usize = 0x10010;
 const REGION_B: usize = 0x10020;
 const FOOTER: usize = 0x45020;

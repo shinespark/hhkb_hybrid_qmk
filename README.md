@@ -1,6 +1,6 @@
 # hhkb_hybrid_qmk
 
-HHKB Professional Hybrid（英語配列）を QMK 化して macOS から書き込むための、個人的な調査とツールです。現在は検証の段階で、QMK のビルドや書き込みの機能はありません。純正の更新ファイルを macOS から書き込む CLI があり、手元の 1 台で 1 回成功しています。
+HHKB Professional Hybrid（英語配列）を QMK 化して macOS から書き込むための、個人的な調査とツールです。現在は検証の段階です。純正の更新ファイルを macOS から書き込む CLI があり、手元の 1 台で 1 回成功しています。QMK はビルドして HFB を生成できますが、書き込む機能はまだありません。
 
 ## 免責事項
 
@@ -10,6 +10,7 @@ HHKB Professional Hybrid（英語配列）を QMK 化して macOS から書き�
 - 公式ツールやファームウェアの利用には、PFU の使用許諾と適用される法令が適用されます。内容を確認し、利用者自身の判断で扱ってください
 - 本プロジェクトの記述は法的な助言ではありません。また、特定の行為が適法であることや使用許諾に違反しないことを保証するものでもありません
 - 本リポジトリは、公式ツール、公式ファームウェア、そこから抽出したデータを含まず、配布しません
+- 参考実装 [l3tnun/hhkb_hybrid](https://github.com/l3tnun/hhkb_hybrid) は submodule でコミットを固定して参照するだけで、ファイルを本リポジトリに含みません。参考実装の定義には、作者が公式ファームウェアの逆アセンブルで得た知見が反映されています。取得して使うかは、利用者自身の判断で決めてください
 - 解析記録は手元の 1 台の観測にもとづくものです。他の個体や版に当てはまるとは限りません
 - 記載の製品名は各社の商標または登録商標です
 
@@ -76,6 +77,39 @@ HHKB Professional Hybrid（英語配列）を QMK 化して macOS から書き�
 4. USB の表示、キー入力、`hhkb status`、公式ツールの読み出しを確認します
 
 中止したときは、到達した段階と次の手順を表示します。実機の状態は断定しないので、キー入力の可否で確かめてください。
+
+## QMK のビルドの準備
+
+QMK のキーボード定義は、参考実装 [l3tnun/hhkb_hybrid](https://github.com/l3tnun/hhkb_hybrid) をコミット固定の submodule で参照します。QMK 本体は、参考実装が固定したコミットを取得します。次のコマンドをリポジトリのルートで実行します。実行するのは Git の取得だけです。
+
+```sh
+git submodule update --init third_party/hhkb_hybrid
+git -C third_party/hhkb_hybrid submodule update --init --depth 1 qmk_firmware
+git -C third_party/hhkb_hybrid/qmk_firmware submodule update --init --depth 1 lib/chibios lib/chibios-contrib lib/lufa lib/printf
+```
+
+ライセンスと、生成物の扱いは次のとおりです。正確な内容は参考実装の `LICENSE` と `README.md`、各ファイルの `SPDX-License-Identifier` を確認してください。
+
+- 参考実装のファイルは、MIT、GPL-2.0-or-later、Apache-2.0 が混在します。上流の QMK 本体などは、それぞれのライセンスに従います
+- ビルドした `.bin` は QMK 本体（GPL-2.0）と結合したものです。公開も配布もしないでください
+- 生成した `.hfb` には PFU 製の nRF イメージが含まれます。公開も配布もしないでください
+- これらのライセンスは、PFU の公式ファームウェアや公式ツールと、そこから派生したものについて権利を与えません
+
+## QMK のビルドと HFB の生成
+
+実機には触れません。Docker Desktop を起動しておき、前の節の準備の後に、リポジトリのルートで実行します。`docker` コマンドが見つからないときは、Docker Desktop の CLI を PATH に追加してください。
+
+```sh
+cargo run -p hhkb -- qmk build default
+cargo run -p hhkb -- qmk hfb default --bin local/qmk-build/default-arm64/hhkb_hybrid_default.bin --stock local/HHKB800_FW_A048.hfb --out local/hhkb_hybrid_default.hfb
+```
+
+`default` を `via` に置き換えると、VIA 対応版を作れます。
+
+- `qmk build` は、参考実装と QMK 本体のコミットを確かめてからビルドし、`.bin` の SHA-256 を期待する値と照合します。一致しないときは 0 以外で終了します
+- `qmk hfb` は、許可した純正 HFB の領域 A だけを `.bin` に置き換えて CRC を計算し直し、`local/` に権限 `0600` で新規作成します。既存のファイルは上書きしません
+- 期待する値は、固定したコミットの手元での実測値です。ビルドの結果が同じであることを確かめるもので、ファームウェアが正しく動くことの保証ではありません。実機での動作は未確認です
+- 生成した HFB は `hhkb flash` の許可リストに入っていないので、書き込めません
 
 ## 検証状況
 
