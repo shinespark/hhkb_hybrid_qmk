@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
+use hidapi::{BusType, DeviceInfo};
+
 pub const VENDOR_ID: u16 = 0x04fe;
 pub const PRODUCT_ID: u16 = 0x0021;
 pub const VENDOR_USAGE_PAGE: u16 = 0xff00;
@@ -21,6 +23,24 @@ pub struct HidEntry {
     pub release: u16,
     pub usage_page: u16,
     pub usage: u16,
+}
+
+impl From<&DeviceInfo> for HidEntry {
+    fn from(info: &DeviceInfo) -> Self {
+        Self {
+            path: info.path().to_string_lossy().into_owned(),
+            vendor_id: info.vendor_id(),
+            product_id: info.product_id(),
+            transport: match info.bus_type() {
+                BusType::Usb => Transport::Usb,
+                _ => Transport::Other,
+            },
+            product: info.product_string().map(str::to_owned),
+            release: info.release_number(),
+            usage_page: info.usage_page(),
+            usage: info.usage(),
+        }
+    }
 }
 
 pub trait HidEnumerator {

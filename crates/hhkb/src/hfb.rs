@@ -12,7 +12,7 @@ const PADDING: usize = 0x10004;
 const MD5_FIELD: usize = 0x10010;
 const REGION_B: usize = 0x10020;
 const FOOTER: usize = 0x45020;
-const VERSION_FIELD: usize = 0x45028;
+pub(crate) const VERSION_FIELD: usize = 0x45028;
 
 const IDENTIFIER_SIZE: usize = 6;
 const IDENTIFIER_TERMINATOR: [u8; 2] = *b"\n\0";
@@ -173,7 +173,7 @@ fn md5_check(data: &[u8]) -> Check {
     }
 }
 
-fn to_hex(bytes: &[u8]) -> String {
+pub(crate) fn to_hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
