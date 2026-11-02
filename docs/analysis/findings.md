@@ -438,6 +438,66 @@ cargo run -p hhkb -- status
 - 公式ツールが更新モードの実機に HFB を書き込めること
 - 純正の再書き込みでキーマップなどの設定が維持されること
 
+## Linux からの復旧手順
+
+macOS からの書き込みが途中で止まったときに、Linux から純正 `A0.48` を書き込んで戻す手順です。参考実装のコミット `0099ac64d30a0530714844fe1fcbaff230fc65fa` の `tools/flash.py` と `docs/setup.md` にもとづきます。**書き込みと `--resume` は未実行で、この手順で戻せることは未検証です。** 実機の更新を伴うので、保証に影響する可能性があります。
+
+### 確認済みの状態
+
+実機の Linux で `--list` と `--dry-run` を実行し、次のことを確認しました。どちらも実機に送信しません。
+
+| 項目 | 結果 |
+|---|---|
+| 接続方法 | 仮想マシンではない Linux に USB で接続 |
+| 認識 | `HHKB-Hybrid` が 1 台 |
+| 更新用インターフェース | `input2`、ディスクリプタの先頭 `06 00 ff`、`FLASH TARGET` と表示 |
+| 純正 HFB | SHA-256 と CRC が一致、4,960 パケット、`stock (no QMK)` と判定 |
+| 権限 | udev ルールの追加と USB の抜き差しの後、`--list` の権限の警告が消えた |
+
+`--list` はシリアル番号を表示します。出力を共有するときは隠します。`--trace-log` のログには HFB の内容が残るので、公開しません。
+
+### 準備
+
+- `tools/flash.py` は `/dev/hidraw*` を読み書きするので、権限が必要です。`/etc/udev/rules.d/70-hhkb-hybrid.rules` に次のルールを置き、`sudo udevadm control --reload-rules` の後に USB を抜き差しします。`sudo chmod` は、再列挙で `hidraw` の番号が変わるので使えません
+
+  ```
+  SUBSYSTEM=="hidraw", ATTRS{idVendor}=="04fe", ATTRS{idProduct}=="0021", TAG+="uaccess"
+  ```
+
+- 更新モードでは HHKB から入力できない可能性があるので、Linux を操作できる別のキーボードを用意します
+- HHKB とペアリングした Mac と Linux の Bluetooth を切ります。資料には、Bluetooth 接続時にパケット 1149 の次で転送が止まる例があります
+- ハブを使わず直結し、Linux の電源とスリープの設定を確認します
+
+### 手順
+
+参考実装のディレクトリで実行します。
+
+1. HFB と状態を確認します
+
+   ```sh
+   echo "635b995eb5a15aa50c2cedc60da7d8998fcca8285a09d41d984c07fffcaf9d43  ../HHKB800_FW_A048.hfb" | sha256sum -c -
+   python3 tools/flash.py --dry-run ../HHKB800_FW_A048.hfb
+   python3 tools/flash.py --list | sed -E 's/serial=[^ ]*/serial=<masked>/'
+   ```
+
+2. `FLASH TARGET` の `/dev/hidrawN` を確かめ、HHKB からキー入力できるかで状態を判断します。USB の表示では、純正 FW と更新モードを区別できません
+
+   | 状態 | 判断 | 次の操作 |
+   |---|---|---|
+   | キー入力できる | 純正 FW で動作している | 復旧は不要。再度書き込むかは判断する |
+   | キー入力できない | 更新モードの可能性がある | 手順 3 |
+   | `FLASH TARGET` がない | 認識に失敗している可能性がある | USB を抜き差しして手順 1 に戻る |
+
+3. 承認を得てから、`--resume` で書き込みます。`--allow-crc-mismatch` は使いません
+
+   ```sh
+   python3 tools/flash.py --resume --device /dev/hidrawN --trace-log <公開しない場所>/flash-trace.jsonl ../HHKB800_FW_A048.hfb
+   ```
+
+4. `done` の表示の後、USB の表示とキー入力を確認します。失敗したら、キー入力の可否を確かめて手順 1 に戻り、繰り返す前に判断します
+
+`--resume` で失敗して HHKB からキー入力できる場合、更新モードではありません。この場合に `--resume` を繰り返しません。転送の途中で失敗した後の再開は資料でも確定していません。Linux でも戻らないときの最終手段は分解で、その判断は利用者に委ねます。
+
 ## 次の段階へ進む条件
 
 ### この change で確定するもの
