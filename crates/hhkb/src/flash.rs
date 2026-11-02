@@ -348,6 +348,22 @@ pub fn write(hfb: &VerifiedHfb) -> Result<(), Abort> {
 }
 
 #[cfg(test)]
+pub(crate) mod testing {
+    use super::VerifiedHfb;
+    use super::image::testing::{sha256_hex, synthetic};
+
+    pub(crate) fn synthetic_bytes() -> Vec<u8> {
+        synthetic()
+    }
+
+    pub(crate) fn verified_synthetic() -> VerifiedHfb {
+        let data = synthetic();
+        let sha256 = sha256_hex(&data);
+        VerifiedHfb::verify_against(data, &[sha256.as_str()]).unwrap()
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use std::cell::RefCell;
     use std::collections::{HashMap, VecDeque};

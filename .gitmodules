@@ -1,0 +1,3 @@
+[submodule "third_party/hhkb_hybrid"]
+	path = third_party/hhkb_hybrid
+	url = https://github.com/l3tnun/hhkb_hybrid

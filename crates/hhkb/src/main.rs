@@ -6,6 +6,7 @@ use clap::{Parser, Subcommand};
 use hhkb::device::{HidEntry, HidEnumerator, Target, select_target};
 use hhkb::flash::{self, Abort, VerifiedHfb};
 use hhkb::hfb::{Determination, Report, inspect};
+use hhkb::qmk::{self, Keymap, Platform, Project};
 use hhkb::status::check_status;
 use hidapi::{HidApi, HidError};
 
@@ -27,6 +28,33 @@ enum Command {
     Flash {
         #[command(subcommand)]
         stage: FlashStage,
+    },
+    /// QMK のビルドと HFB の生成
+    Qmk {
+        #[command(subcommand)]
+        command: QmkCommand,
+    },
+}
+
+#[derive(Subcommand)]
+enum QmkCommand {
+    /// 固定した入力で QMK をビルドし、.bin の SHA-256 を照合する。実機には触れない
+    Build {
+        #[arg(value_enum)]
+        keymap: Keymap,
+        #[arg(long, value_enum, default_value = "arm64")]
+        platform: Platform,
+    },
+    /// 許可した純正 HFB と .bin から HFB を生成する。実機には触れない
+    Hfb {
+        #[arg(value_enum)]
+        keymap: Keymap,
+        #[arg(long)]
+        bin: PathBuf,
+        #[arg(long)]
+        stock: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
     },
 }
 
@@ -215,6 +243,45 @@ fn flash_stage(stage: FlashStage) -> ExitCode {
     }
 }
 
+fn qmk_build(keymap: Keymap, platform: Platform) -> Result<(), String> {
+    let project = Project::from_current_directory().map_err(|error| error.to_string())?;
+    let artifact = qmk::build(&project, keymap, platform).map_err(|error| error.to_string())?;
+    println!("SHA-256 が期待する値と一致しました");
+    println!("成果物: {}", artifact.display());
+    println!("公開も配布もしないでください");
+    Ok(())
+}
+
+fn qmk_hfb(keymap: Keymap, bin: &Path, stock: &Path, out: &Path) -> Result<(), String> {
+    let stock = load_verified(stock)?;
+    let bin = fs::read(bin).map_err(|error| format!("{} を読めません: {error}", bin.display()))?;
+    qmk::generate(keymap, &stock, &bin, Path::new("local"), out)
+        .map_err(|error| error.to_string())?;
+    println!("生成しました: {}", out.display());
+    println!("PFU 製の nRF イメージを含むので、公開も配布もしないでください");
+    println!("hhkb flash の許可リストには入っていないので、このままでは書き込めません");
+    Ok(())
+}
+
+fn qmk_command(command: QmkCommand) -> ExitCode {
+    let result = match command {
+        QmkCommand::Build { keymap, platform } => qmk_build(keymap, platform),
+        QmkCommand::Hfb {
+            keymap,
+            bin,
+            stock,
+            out,
+        } => qmk_hfb(keymap, &bin, &stock, &out),
+    };
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(reason) => {
+            eprintln!("エラー: {reason}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
 fn with_hid(run: impl FnOnce(&SystemHid) -> ExitCode) -> ExitCode {
     match SystemHid::new() {
         Ok(hid) => run(&hid),
@@ -231,5 +298,6 @@ fn main() -> ExitCode {
         Command::Status => with_hid(status),
         Command::Inspect { path } => inspect_file(&path),
         Command::Flash { stage } => flash_stage(stage),
+        Command::Qmk { command } => qmk_command(command),
     }
 }

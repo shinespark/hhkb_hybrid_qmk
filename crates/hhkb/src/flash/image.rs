@@ -107,6 +107,10 @@ impl VerifiedHfb {
         [self.data[VERSION_FIELD], self.data[VERSION_FIELD + 1]]
     }
 
+    pub(crate) fn bytes(&self) -> &[u8] {
+        &self.data
+    }
+
     pub(super) fn stored_crc(&self) -> [u8; 2] {
         [self.data[0], self.data[1]]
     }
