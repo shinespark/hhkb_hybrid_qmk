@@ -4,7 +4,7 @@ use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use super::protocol::{Frame, Step};
+use super::protocol::{QmkCommand, Step};
 use crate::hfb::to_hex;
 
 const START_HEAD_SIZE: usize = 11;
@@ -29,6 +29,9 @@ fn step_fields(step: Step) -> String {
         Step::Start => r#""step":"e1""#.to_owned(),
         Step::Body(packet) => format!(r#""step":"e2","packet":{packet}"#),
         Step::End => r#""step":"e3""#.to_owned(),
+        Step::Qmk(QmkCommand::ModeChange) => r#""step":"qmk-e0""#.to_owned(),
+        Step::Qmk(QmkCommand::StockRevert) => r#""step":"qmk-f0""#.to_owned(),
+        Step::Qmk(QmkCommand::ViaProbe) => r#""step":"qmk-via-probe""#.to_owned(),
     }
 }
 
@@ -36,7 +39,7 @@ fn head_size(step: Step) -> usize {
     match step {
         Step::Start => START_HEAD_SIZE,
         Step::Body(_) => BODY_HEAD_SIZE,
-        Step::KeyboardInfo | Step::ModeChange | Step::End => COMMAND_HEAD_SIZE,
+        Step::KeyboardInfo | Step::ModeChange | Step::End | Step::Qmk(_) => COMMAND_HEAD_SIZE,
     }
 }
 
@@ -56,7 +59,7 @@ impl Log {
         }
     }
 
-    pub(super) fn record_send(&mut self, step: Step, frame: &Frame) {
+    pub(super) fn record_send(&mut self, step: Step, frame: &[u8]) {
         let head = to_hex(&frame[..head_size(step)]);
         self.append(&format!(
             r#""dir":"out",{},"head":"{head}""#,
@@ -108,7 +111,7 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
-    use crate::status::REPORT_SIZE;
+    use crate::device::REPORT_SIZE;
 
     struct TempDir(PathBuf);
 

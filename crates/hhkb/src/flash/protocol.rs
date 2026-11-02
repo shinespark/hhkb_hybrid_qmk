@@ -3,10 +3,13 @@ use std::time::Duration;
 
 use super::image::VerifiedHfb;
 use super::log::Log;
+use crate::device::{REPORT_SIZE, ReportChannel};
 use crate::hfb::to_hex;
-use crate::status::REPORT_SIZE;
 
 pub(super) type Frame = [u8; REPORT_SIZE];
+
+pub(super) const QMK_REPORT_SIZE: usize = 32;
+pub(super) type QmkFrame = [u8; QMK_REPORT_SIZE];
 
 pub(super) const RESPONSE_TIMEOUT: Duration = Duration::from_secs(60);
 
@@ -17,6 +20,20 @@ pub(super) enum Step {
     Start,
     Body(u16),
     End,
+    Qmk(QmkCommand),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum QmkCommand {
+    ModeChange,
+    StockRevert,
+    ViaProbe,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum RevertAnswer {
+    Accepted,
+    Rejected,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -55,11 +72,6 @@ impl fmt::Display for ExchangeError {
     }
 }
 
-pub(super) trait ReportChannel {
-    fn send(&mut self, frame: &Frame) -> Result<(), String>;
-    fn receive(&mut self, timeout: Duration) -> Result<Option<Vec<u8>>, String>;
-}
-
 const RESPONSE_HEAD_SIZE: usize = 6;
 const PACKET_NUMBER_OFFSET: usize = RESPONSE_HEAD_SIZE;
 const BODY_ACK_SIZE: usize = PACKET_NUMBER_OFFSET + 2;
@@ -72,6 +84,9 @@ fn command(step: Step) -> u8 {
         Step::Start => 0xe1,
         Step::Body(_) => 0xe2,
         Step::End => 0xe3,
+        Step::Qmk(QmkCommand::ModeChange) => 0xe0,
+        Step::Qmk(QmkCommand::StockRevert) => 0xf0,
+        Step::Qmk(QmkCommand::ViaProbe) => 0x01,
     }
 }
 
@@ -79,7 +94,7 @@ fn expected_data_size(step: Step) -> u8 {
     match step {
         Step::KeyboardInfo => KEYBOARD_INFO_DATA_SIZE,
         Step::Body(_) => 2,
-        Step::ModeChange | Step::Start | Step::End => 0,
+        Step::ModeChange | Step::Start | Step::End | Step::Qmk(_) => 0,
     }
 }
 
@@ -87,7 +102,7 @@ pub(super) fn frame_for(step: Step, hfb: &VerifiedHfb) -> Frame {
     let mut frame = [0; REPORT_SIZE];
     frame[..3].copy_from_slice(&[0xaa, 0xaa, command(step)]);
     match step {
-        Step::KeyboardInfo | Step::ModeChange | Step::End => {}
+        Step::KeyboardInfo | Step::ModeChange | Step::End | Step::Qmk(_) => {}
         Step::Start => {
             let size = u32::try_from(hfb.size()).expect("HFB のサイズは検査済み");
             frame[4] = 8;
@@ -125,11 +140,23 @@ fn validate(step: Step, bytes: &[u8]) -> Result<(), ExchangeFailure> {
     Ok(())
 }
 
-pub(super) fn exchange(
+pub(super) fn exchange<const SIZE: usize>(
     device: &mut impl ReportChannel,
     log: &mut Log,
     step: Step,
-    frame: &Frame,
+    frame: &[u8; SIZE],
+    timeout: Duration,
+) -> Result<Vec<u8>, ExchangeError> {
+    let bytes = send_and_receive(device, log, step, frame, timeout)?;
+    validate(step, &bytes).map_err(|failure| ExchangeError { step, failure })?;
+    Ok(bytes)
+}
+
+fn send_and_receive(
+    device: &mut impl ReportChannel,
+    log: &mut Log,
+    step: Step,
+    frame: &[u8],
     timeout: Duration,
 ) -> Result<Vec<u8>, ExchangeError> {
     let fail = |failure| ExchangeError { step, failure };
@@ -142,8 +169,75 @@ pub(super) fn exchange(
         .map_err(|reason| fail(ExchangeFailure::Receive(reason)))?
         .ok_or_else(|| fail(ExchangeFailure::Timeout))?;
     log.record_receive(step, &bytes);
-    validate(step, &bytes).map_err(fail)?;
     Ok(bytes)
+}
+
+fn qmk_frame(command: QmkCommand) -> QmkFrame {
+    let mut frame = [0; QMK_REPORT_SIZE];
+    match command {
+        QmkCommand::ModeChange => frame[..3].copy_from_slice(&[0xaa, 0xaa, 0xe0]),
+        QmkCommand::StockRevert => frame[..3].copy_from_slice(&[0xaa, 0xaa, 0xf0]),
+        QmkCommand::ViaProbe => frame[0] = 0x01,
+    }
+    frame
+}
+
+// QMK は応答の後で USB を切断するので、応答を受けた時点で移行の成功とする。
+pub(super) fn qmk_mode_change(
+    device: &mut impl ReportChannel,
+    log: &mut Log,
+    timeout: Duration,
+) -> Result<(), ExchangeError> {
+    let frame = qmk_frame(QmkCommand::ModeChange);
+    exchange(
+        device,
+        log,
+        Step::Qmk(QmkCommand::ModeChange),
+        &frame,
+        timeout,
+    )
+    .map(|_| ())
+}
+
+pub(super) fn qmk_stock_revert(
+    device: &mut impl ReportChannel,
+    log: &mut Log,
+    timeout: Duration,
+) -> Result<RevertAnswer, ExchangeError> {
+    let step = Step::Qmk(QmkCommand::StockRevert);
+    let bytes = send_and_receive(
+        device,
+        log,
+        step,
+        &qmk_frame(QmkCommand::StockRevert),
+        timeout,
+    )?;
+    match bytes.get(..5) {
+        Some([0x55, 0x55, 0xf0, 0x00, 0x00]) => Ok(RevertAnswer::Accepted),
+        Some([0x55, 0x55, 0xf0, 0x01, 0x00]) => Ok(RevertAnswer::Rejected),
+        _ => Err(ExchangeError {
+            step,
+            failure: ExchangeFailure::Unexpected {
+                head: bytes[..bytes.len().min(RESPONSE_HEAD_SIZE)].to_vec(),
+            },
+        }),
+    }
+}
+
+pub(super) fn qmk_via_answers(
+    device: &mut impl ReportChannel,
+    log: &mut Log,
+    timeout: Duration,
+) -> Result<bool, ExchangeError> {
+    let step = Step::Qmk(QmkCommand::ViaProbe);
+    match send_and_receive(device, log, step, &qmk_frame(QmkCommand::ViaProbe), timeout) {
+        Ok(_) => Ok(true),
+        Err(ExchangeError {
+            failure: ExchangeFailure::Timeout,
+            ..
+        }) => Ok(false),
+        Err(error) => Err(error),
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -192,7 +286,7 @@ pub(super) mod testing {
         ShortResponse,
     }
 
-    pub(in crate::flash) fn correct_reply(frame: &Frame) -> Vec<u8> {
+    pub(in crate::flash) fn correct_reply(frame: &[u8]) -> Vec<u8> {
         let mut reply = vec![0u8; REPORT_SIZE];
         reply[..3].copy_from_slice(&[0x55, 0x55, frame[2]]);
         if frame[2] == 0xe2 {
@@ -205,7 +299,7 @@ pub(super) mod testing {
 
     #[derive(Default)]
     pub(in crate::flash) struct ScriptedDevice {
-        pub(in crate::flash) sent: Vec<Frame>,
+        pub(in crate::flash) sent: Vec<Vec<u8>>,
         pub(in crate::flash) fault: Option<(usize, Fault)>,
     }
 
@@ -218,8 +312,8 @@ pub(super) mod testing {
     }
 
     impl ReportChannel for ScriptedDevice {
-        fn send(&mut self, frame: &Frame) -> Result<(), String> {
-            self.sent.push(*frame);
+        fn send(&mut self, report: &[u8]) -> Result<(), String> {
+            self.sent.push(report.to_vec());
             if self.current_fault() == Some(Fault::SendFails) {
                 return Err("送信失敗".to_owned());
             }
@@ -251,12 +345,13 @@ pub(super) mod testing {
 mod tests {
     use super::testing::{Fault, ScriptedDevice, null_log};
     use super::*;
+    use crate::flash::image::HfbKind;
     use crate::flash::image::testing::{sha256_hex, synthetic};
 
     fn hfb() -> VerifiedHfb {
         let data = synthetic();
         let sha256 = sha256_hex(&data);
-        VerifiedHfb::verify_against(data, &[sha256.as_str()]).unwrap()
+        VerifiedHfb::verify_against(data, &[(sha256.as_str(), HfbKind::Stock)]).unwrap()
     }
 
     fn run(fault: Option<(usize, Fault)>) -> (ScriptedDevice, Result<(), TransferError>) {
@@ -315,6 +410,137 @@ mod tests {
             let received = from_hex(json_string(line, "rx"));
             assert_eq!(validate(*step, &received), Ok(()), "{step:?}");
         }
+    }
+
+    #[test]
+    fn qmk_frames_are_32_bytes_in_the_documented_format() {
+        let cases: [(QmkCommand, &[u8]); 3] = [
+            (QmkCommand::ModeChange, &[0xaa, 0xaa, 0xe0, 0x00, 0x00]),
+            (QmkCommand::StockRevert, &[0xaa, 0xaa, 0xf0, 0x00, 0x00]),
+            (QmkCommand::ViaProbe, &[0x01]),
+        ];
+        for (command, head) in cases {
+            let frame = qmk_frame(command);
+            assert_eq!(frame.len(), 32, "{command:?}");
+            assert_eq!(&frame[..head.len()], head, "{command:?}");
+            assert!(frame[head.len()..].iter().all(|b| *b == 0), "{command:?}");
+        }
+    }
+
+    struct OneReply {
+        sent: Vec<Vec<u8>>,
+        reply: Option<Vec<u8>>,
+    }
+
+    fn replying(reply: Option<Vec<u8>>) -> OneReply {
+        OneReply {
+            sent: Vec::new(),
+            reply,
+        }
+    }
+
+    impl ReportChannel for OneReply {
+        fn send(&mut self, report: &[u8]) -> Result<(), String> {
+            self.sent.push(report.to_vec());
+            Ok(())
+        }
+
+        fn receive(&mut self, _timeout: Duration) -> Result<Option<Vec<u8>>, String> {
+            Ok(self.reply.clone())
+        }
+    }
+
+    fn qmk_reply(head: &[u8]) -> Option<Vec<u8>> {
+        let mut bytes = vec![0; QMK_REPORT_SIZE];
+        bytes[..head.len()].copy_from_slice(head);
+        Some(bytes)
+    }
+
+    const SHORT: Duration = Duration::from_millis(1);
+
+    #[test]
+    fn qmk_mode_change_accepts_only_the_documented_reply() {
+        let mut device = replying(qmk_reply(&[0x55, 0x55, 0xe0]));
+        assert_eq!(qmk_mode_change(&mut device, &mut null_log(), SHORT), Ok(()));
+        assert_eq!(device.sent[0].len(), 32);
+
+        for reply in [
+            qmk_reply(&[0x55, 0x55, 0xe0, 0x01]),
+            qmk_reply(&[0x55, 0x55, 0xf0]),
+            Some(vec![0x55, 0x55]),
+            None,
+        ] {
+            let mut device = replying(reply.clone());
+            assert!(
+                qmk_mode_change(&mut device, &mut null_log(), SHORT).is_err(),
+                "{reply:?}"
+            );
+            assert_eq!(device.sent.len(), 1, "{reply:?}");
+        }
+    }
+
+    #[test]
+    fn stock_revert_distinguishes_acceptance_and_rejection() {
+        let cases = [
+            (&[0x55, 0x55, 0xf0, 0x00, 0x00], RevertAnswer::Accepted),
+            (&[0x55, 0x55, 0xf0, 0x01, 0x00], RevertAnswer::Rejected),
+        ];
+        for (head, expected) in cases {
+            let mut device = replying(qmk_reply(head));
+            assert_eq!(
+                qmk_stock_revert(&mut device, &mut null_log(), SHORT),
+                Ok(expected)
+            );
+        }
+    }
+
+    #[test]
+    fn other_stock_revert_replies_are_errors() {
+        for reply in [
+            qmk_reply(&[0x55, 0x55, 0xf0, 0x02, 0x00]),
+            qmk_reply(&[0x55, 0x55, 0xf0, 0x00, 0x01]),
+            qmk_reply(&[0x55, 0x55, 0xe0, 0x00, 0x00]),
+            Some(vec![0x55, 0x55, 0xf0]),
+            None,
+        ] {
+            let mut device = replying(reply.clone());
+            assert!(
+                qmk_stock_revert(&mut device, &mut null_log(), SHORT).is_err(),
+                "{reply:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn via_probe_counts_any_reply_as_an_answer() {
+        for (reply, expected) in [
+            (qmk_reply(&[0x01, 0x00, 0x0c]), true),
+            (qmk_reply(&[0xff]), true),
+            (None, false),
+        ] {
+            let mut device = replying(reply.clone());
+            assert_eq!(
+                qmk_via_answers(&mut device, &mut null_log(), SHORT),
+                Ok(expected),
+                "{reply:?}"
+            );
+            assert_eq!(device.sent[0][0], 0x01);
+            assert_eq!(device.sent[0].len(), 32);
+        }
+    }
+
+    #[test]
+    fn via_probe_receive_failure_is_an_error() {
+        struct Failing;
+        impl ReportChannel for Failing {
+            fn send(&mut self, _report: &[u8]) -> Result<(), String> {
+                Ok(())
+            }
+            fn receive(&mut self, _timeout: Duration) -> Result<Option<Vec<u8>>, String> {
+                Err("受信失敗".to_owned())
+            }
+        }
+        assert!(qmk_via_answers(&mut Failing, &mut null_log(), SHORT).is_err());
     }
 
     #[test]

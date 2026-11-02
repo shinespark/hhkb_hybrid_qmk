@@ -7,7 +7,7 @@ use std::path::Path;
 use sha2::{Digest, Sha256};
 
 use super::build::Keymap;
-use crate::flash::VerifiedHfb;
+use crate::flash::{HfbKind, VerifiedHfb};
 use crate::hfb::{
     FILE_SIZE, PADDING, REGION_A, REGION_A_CRC_FIELD, WHOLE_CRC_FIELD, crc16, inspect, to_hex,
 };
@@ -20,6 +20,7 @@ pub enum GenerateError {
     TooLarge { actual: usize },
     EmptyBinary,
     BinaryNotAllowed { sha256: String },
+    TemplateNotStock,
     Write(String),
     OutsideLocal,
     Invalid,
@@ -38,6 +39,9 @@ impl fmt::Display for GenerateError {
                     f,
                     "許可リストにない .bin なので生成しません（SHA-256: {sha256}）"
                 )
+            }
+            Self::TemplateNotStock => {
+                write!(f, "テンプレートが純正の HFB ではないので生成しません")
             }
             Self::Write(reason) => write!(f, "出力先に書き込めません: {reason}"),
             Self::OutsideLocal => write!(f, "出力先は local/ の中を指定してください"),
@@ -101,6 +105,9 @@ fn generate_with(
     local: &Path,
     output: &Path,
 ) -> Result<(), GenerateError> {
+    if stock.kind() != HfbKind::Stock {
+        return Err(GenerateError::TemplateNotStock);
+    }
     let sha256 = to_hex(&Sha256::digest(bin));
     if sha256 != allowed_bin_sha256 {
         return Err(GenerateError::BinaryNotAllowed { sha256 });
@@ -237,6 +244,25 @@ mod tests {
         let metadata = fs::metadata(&output).unwrap();
         assert_eq!(metadata.permissions().mode() & 0o777, 0o600);
         assert!(inspect(&fs::read(&output).unwrap()).unwrap().is_valid());
+    }
+
+    #[test]
+    fn generated_hfb_as_a_template_creates_no_file() {
+        let dir = TempDir::new("template-kind");
+        let output = dir.local().join("out.hfb");
+        let bytes = app();
+        let sha256 = to_hex(&Sha256::digest(&bytes));
+        for kind in [HfbKind::QmkDefault, HfbKind::QmkVia] {
+            let result = generate_with(
+                &crate::flash::testing::verified_synthetic_as(kind),
+                &bytes,
+                &sha256,
+                &dir.local(),
+                &output,
+            );
+            assert_eq!(result, Err(GenerateError::TemplateNotStock), "{kind:?}");
+            assert!(!output.exists(), "{kind:?}");
+        }
     }
 
     #[test]

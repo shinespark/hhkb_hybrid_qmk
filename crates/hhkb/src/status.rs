@@ -1,15 +1,14 @@
-use std::ffi::CString;
 use std::fmt;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-use hidapi::{HidApi, HidDevice};
+use hidapi::HidApi;
 
 use crate::device::{
-    HidEntry, HidEnumerator, SelectError, Target, VENDOR_USAGE_PAGE, select_target,
+    DeviceState, HidEntry, HidEnumerator, QMK_USAGE_PAGE, REPORT_SIZE, ReportChannel, SelectError,
+    SystemDevice, Target, VENDOR_USAGE_PAGE, open_device, select_target,
 };
 
-pub(crate) const REPORT_SIZE: usize = 64;
 const COMMAND_OFFSET: usize = 2;
 const RESPONSE_TIMEOUT: Duration = Duration::from_secs(1);
 const OFFICIAL_TOOL_PROCESS: &str = "hhkb-keymap-tool";
@@ -53,6 +52,7 @@ pub enum StatusError {
     ProcessCheckFailed(String),
     Select(SelectError),
     VendorInterfaceNotIsolated,
+    QmkInterfaceNotIsolated,
     Open(String),
     Send(String),
     Receive(String),
@@ -75,6 +75,10 @@ impl fmt::Display for StatusError {
                 f,
                 "Usage Page 0xFF00 のインターフェースが他の用途と分かれていないので開きません"
             ),
+            Self::QmkInterfaceNotIsolated => write!(
+                f,
+                "Usage Page 0xFF60 のインターフェースが他の用途と分かれていないので開きません"
+            ),
             Self::Open(reason) => write!(f, "デバイスを開けません: {reason}"),
             Self::Send(reason) => write!(f, "送信に失敗しました。再送しません: {reason}"),
             Self::Receive(reason) => write!(f, "受信に失敗しました。再送しません: {reason}"),
@@ -92,13 +96,8 @@ pub(crate) trait ProcessCheck {
     fn official_tool_running(&self) -> Result<bool, String>;
 }
 
-trait ReportTransport {
-    fn send(&mut self, report: &[u8; REPORT_SIZE]) -> Result<(), String>;
-    fn receive(&mut self, timeout: Duration) -> Result<Option<Vec<u8>>, String>;
-}
-
 trait DeviceOpener {
-    type Device: ReportTransport;
+    type Device: ReportChannel;
     fn open(&self, path: &str) -> Result<Self::Device, String>;
 }
 
@@ -133,42 +132,8 @@ impl DeviceOpener for SystemOpener<'_> {
     type Device = SystemDevice;
 
     fn open(&self, path: &str) -> Result<SystemDevice, String> {
-        let path = CString::new(path).map_err(|error| error.to_string())?;
-        #[cfg(target_os = "macos")]
-        self.api.set_open_exclusive(false);
-        self.api
-            .open_path(&path)
-            .map(SystemDevice)
-            .map_err(|error| error.to_string())
+        open_device(self.api, path)
     }
-}
-
-struct SystemDevice(HidDevice);
-
-impl ReportTransport for SystemDevice {
-    fn send(&mut self, report: &[u8; REPORT_SIZE]) -> Result<(), String> {
-        self.0
-            .write(&output_buffer(report))
-            .map(|_| ())
-            .map_err(|error| error.to_string())
-    }
-
-    fn receive(&mut self, timeout: Duration) -> Result<Option<Vec<u8>>, String> {
-        let mut buffer = [0; REPORT_SIZE];
-        let timeout_ms = i32::try_from(timeout.as_millis()).unwrap_or(i32::MAX);
-        let size = self
-            .0
-            .read_timeout(&mut buffer, timeout_ms)
-            .map_err(|error| error.to_string())?;
-        Ok((size > 0).then(|| buffer[..size].to_vec()))
-    }
-}
-
-// hid_write は先頭バイトをレポート ID として扱う。公式ツールの送信はレポート ID 0 の 64 バイトなので、0 を前置する。
-pub(crate) fn output_buffer(report: &[u8; REPORT_SIZE]) -> [u8; REPORT_SIZE + 1] {
-    let mut buffer = [0; REPORT_SIZE + 1];
-    buffer[1..].copy_from_slice(report);
-    buffer
 }
 
 fn parse_response(bytes: &[u8], command: u8) -> Option<Received> {
@@ -183,7 +148,7 @@ fn parse_response(bytes: &[u8], command: u8) -> Option<Received> {
 }
 
 fn exchange(
-    device: &mut impl ReportTransport,
+    device: &mut impl ReportChannel,
     report: &[u8; REPORT_SIZE],
     timeout: Duration,
 ) -> Result<Received, StatusError> {
@@ -204,24 +169,22 @@ fn exchange(
     }
 }
 
-pub(crate) fn vendor_interface_path(target: &Target) -> Result<&str, StatusError> {
+fn isolated_interface_path(target: &Target, wanted: u16) -> Option<&str> {
     target
         .interfaces
         .iter()
-        .find(|interface| {
-            interface
-                .usages
-                .iter()
-                .any(|(page, _)| *page == VENDOR_USAGE_PAGE)
-        })
-        .filter(|interface| {
-            interface
-                .usages
-                .iter()
-                .all(|(page, _)| *page == VENDOR_USAGE_PAGE)
-        })
+        .find(|interface| interface.usages.iter().any(|(page, _)| *page == wanted))
+        .filter(|interface| interface.usages.iter().all(|(page, _)| *page == wanted))
         .map(|interface| interface.path.as_str())
+}
+
+pub(crate) fn vendor_interface_path(target: &Target) -> Result<&str, StatusError> {
+    isolated_interface_path(target, VENDOR_USAGE_PAGE)
         .ok_or(StatusError::VendorInterfaceNotIsolated)
+}
+
+pub(crate) fn qmk_interface_path(target: &Target) -> Result<&str, StatusError> {
+    isolated_interface_path(target, QMK_USAGE_PAGE).ok_or(StatusError::QmkInterfaceNotIsolated)
 }
 
 fn check_with(
@@ -238,7 +201,7 @@ fn check_with(
         return Err(StatusError::OfficialToolRunning);
     }
     let target = select_target(entries).map_err(StatusError::Select)?;
-    if reports.is_empty() {
+    if reports.is_empty() || target.state != DeviceState::StockOrUpdate {
         return Ok(Status {
             target,
             received: Vec::new(),
@@ -305,8 +268,8 @@ mod tests {
         repeat_last: Option<Vec<u8>>,
     }
 
-    impl ReportTransport for MockDevice {
-        fn send(&mut self, report: &[u8; REPORT_SIZE]) -> Result<(), String> {
+    impl ReportChannel for MockDevice {
+        fn send(&mut self, report: &[u8]) -> Result<(), String> {
             self.log.borrow_mut().send_attempts.push(report.to_vec());
             if self.send_fails {
                 Err("送信失敗".to_owned())
@@ -403,6 +366,61 @@ mod tests {
         assert!(status.received.is_empty());
         assert!(log.borrow().opened.is_empty());
         assert!(log.borrow().send_attempts.is_empty());
+    }
+
+    fn named(path: &str, product: &str, usage_page: u16, usage: u16) -> HidEntry {
+        HidEntry {
+            product: Some(product.to_owned()),
+            ..entry(path, usage_page, usage)
+        }
+    }
+
+    #[test]
+    fn qmk_is_listed_without_opening_or_sending() {
+        let entries = vec![
+            named("a-kbd", "HHKB Hybrid QMK", 0x0001, 0x0006),
+            named("a-raw", "HHKB Hybrid QMK", QMK_USAGE_PAGE, 0x0061),
+        ];
+        let (opener, log) = opener(vec![]);
+        let status = check_with(
+            &TOOL_NOT_RUNNING,
+            &entries,
+            &opener,
+            &[report(0x02)],
+            TIMEOUT,
+        )
+        .unwrap();
+        assert_eq!(status.target.state, DeviceState::QmkLikely);
+        assert!(status.received.is_empty());
+        assert!(log.borrow().opened.is_empty());
+        assert!(log.borrow().send_attempts.is_empty());
+    }
+
+    #[test]
+    fn undetermined_state_is_listed_without_opening_or_sending() {
+        let cases = [
+            vec![named("a-raw", "HHKB-Hybrid", QMK_USAGE_PAGE, 0x0061)],
+            vec![named(
+                "a-vendor",
+                "HHKB Hybrid QMK",
+                VENDOR_USAGE_PAGE,
+                0x0001,
+            )],
+        ];
+        for entries in cases {
+            let (opener, log) = opener(vec![]);
+            let status = check_with(
+                &TOOL_NOT_RUNNING,
+                &entries,
+                &opener,
+                &[report(0x02)],
+                TIMEOUT,
+            )
+            .unwrap();
+            assert_eq!(status.target.state, DeviceState::Undetermined);
+            assert!(log.borrow().opened.is_empty());
+            assert!(log.borrow().send_attempts.is_empty());
+        }
     }
 
     #[test]
@@ -634,14 +652,6 @@ mod tests {
         )
         .unwrap();
         assert_eq!(status.received[0].byte3, 0x07);
-    }
-
-    #[test]
-    fn output_buffer_prepends_report_id_zero() {
-        let buffer = output_buffer(&report(0x02));
-        assert_eq!(buffer.len(), 65);
-        assert_eq!(buffer[..4], [0x00, 0xaa, 0xaa, 0x02]);
-        assert!(buffer[4..].iter().all(|byte| *byte == 0));
     }
 
     #[test]

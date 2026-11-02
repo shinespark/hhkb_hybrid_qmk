@@ -5,6 +5,11 @@ pub enum Stage {
     EnterNotSent,
     QueryOnly,
     ModeChangeAttempted,
+    QmkEnterNotSent,
+    QmkModeChangeAttempted {
+        command: u8,
+    },
+    QmkRevertRefused,
     WriteNotSent,
     TransferAttempted {
         last_acked: Option<u16>,
@@ -29,6 +34,8 @@ impl std::error::Error for Abort {}
 
 const LINUX_RECOVERY: &str = "Linux からの復旧: docs/analysis/findings.md の「Linux からの復旧手順」に従い、承認を得てから python3 tools/flash.py --resume --device /dev/hidrawN --trace-log <公開しない場所>/flash-trace.jsonl ../HHKB800_FW_A048.hfb を実行します。途中で止まった状態からの復旧は未検証です";
 
+const QMK_BOOTMAGIC: &str = "QMK が応答しないときは、Esc を押しながら USB を接続すると更新モードへ入れると資料にあります。この手順は未検証です";
+
 const CHECK_BY_KEY_INPUT: &str =
     "HHKB の状態は断定できません。キー入力の可否で確認します（USB の表示では区別できません）";
 
@@ -47,6 +54,22 @@ impl Abort {
                 "到達した段階: 移行のレポート（e0）の送信後。{CHECK_BY_KEY_INPUT}\n\
                  - 入力できる: 純正 FW で動いている可能性があります。hhkb flash enter をやり直すかを判断します\n\
                  - 入力できない: 更新モードの可能性があります。USB を抜き差しして hhkb list で確かめ、hhkb flash write を実行するかを判断します\n\
+                 {LINUX_RECOVERY}"
+            ),
+            Stage::QmkEnterNotSent => format!(
+                "到達した段階: QMK の移行の前。レポートは送信していません。原因を解消してから hhkb flash enter をやり直します\n{QMK_BOOTMAGIC}\n{LINUX_RECOVERY}"
+            ),
+            Stage::QmkModeChangeAttempted { command } => format!(
+                "到達した段階: QMK への移行のレポート（{command:02x}）の送信後。{CHECK_BY_KEY_INPUT}\n\
+                 - 入力できる: QMK で動いている可能性があります。hhkb list で確かめ、hhkb flash enter をやり直すかを判断します\n\
+                 - 入力できない: 更新モードの可能性があります。USB を抜き差しして hhkb list で確かめ、hhkb flash write を実行するかを判断します\n\
+                 {QMK_BOOTMAGIC}\n\
+                 {LINUX_RECOVERY}"
+            ),
+            Stage::QmkRevertRefused => format!(
+                "到達した段階: QMK への f0 の送信後。f0 は拒否され、e0 は送信していません。VIA の設定が残ったまま純正へ戻らないように、移行を中止しました。{CHECK_BY_KEY_INPUT}\n\
+                 hhkb flash enter をやり直しても結果は変わらない可能性が高いので、繰り返さずに判断します\n\
+                 {QMK_BOOTMAGIC}\n\
                  {LINUX_RECOVERY}"
             ),
             Stage::WriteNotSent => format!(
@@ -86,10 +109,19 @@ mod tests {
         .guidance()
     }
 
-    const ALL_STAGES: [Stage; 6] = [
+    const QMK_STAGES: [Stage; 3] = [
+        Stage::QmkEnterNotSent,
+        Stage::QmkModeChangeAttempted { command: 0xe0 },
+        Stage::QmkRevertRefused,
+    ];
+
+    const ALL_STAGES: [Stage; 9] = [
         Stage::EnterNotSent,
         Stage::QueryOnly,
         Stage::ModeChangeAttempted,
+        Stage::QmkEnterNotSent,
+        Stage::QmkModeChangeAttempted { command: 0xf0 },
+        Stage::QmkRevertRefused,
         Stage::WriteNotSent,
         Stage::TransferAttempted {
             last_acked: Some(10),
@@ -97,6 +129,38 @@ mod tests {
         },
         Stage::EndAttempted,
     ];
+
+    #[test]
+    fn every_qmk_stage_shows_the_esc_procedure_as_unverified() {
+        for stage in QMK_STAGES {
+            let text = guidance(stage);
+            assert!(text.contains("Esc を押しながら"), "{stage:?}: {text}");
+            assert!(text.contains("未検証"), "{stage:?}: {text}");
+        }
+    }
+
+    #[test]
+    fn stock_stages_do_not_mention_the_qmk_procedure() {
+        for stage in [
+            Stage::EnterNotSent,
+            Stage::QueryOnly,
+            Stage::ModeChangeAttempted,
+        ] {
+            assert!(!guidance(stage).contains("Esc を押しながら"), "{stage:?}");
+        }
+    }
+
+    #[test]
+    fn qmk_mode_change_stage_names_the_command() {
+        let text = guidance(Stage::QmkModeChangeAttempted { command: 0xf0 });
+        assert!(text.contains("f0"), "{text}");
+    }
+
+    #[test]
+    fn revert_refused_stage_says_e0_was_not_sent() {
+        let text = guidance(Stage::QmkRevertRefused);
+        assert!(text.contains("e0 は送信していません"), "{text}");
+    }
 
     #[test]
     fn nothing_sent_before_mode_change_says_so() {
