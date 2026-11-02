@@ -9,7 +9,7 @@ use crate::device::{
     HidEntry, HidEnumerator, SelectError, Target, VENDOR_USAGE_PAGE, select_target,
 };
 
-const REPORT_SIZE: usize = 64;
+pub(crate) const REPORT_SIZE: usize = 64;
 const COMMAND_OFFSET: usize = 2;
 const RESPONSE_TIMEOUT: Duration = Duration::from_secs(1);
 const OFFICIAL_TOOL_PROCESS: &str = "hhkb-keymap-tool";
@@ -88,7 +88,7 @@ impl fmt::Display for StatusError {
 
 impl std::error::Error for StatusError {}
 
-trait ProcessCheck {
+pub(crate) trait ProcessCheck {
     fn official_tool_running(&self) -> Result<bool, String>;
 }
 
@@ -102,7 +102,7 @@ trait DeviceOpener {
     fn open(&self, path: &str) -> Result<Self::Device, String>;
 }
 
-struct Pgrep;
+pub(crate) struct Pgrep;
 
 impl ProcessCheck for Pgrep {
     fn official_tool_running(&self) -> Result<bool, String> {
@@ -165,7 +165,7 @@ impl ReportTransport for SystemDevice {
 }
 
 // hid_write は先頭バイトをレポート ID として扱う。公式ツールの送信はレポート ID 0 の 64 バイトなので、0 を前置する。
-fn output_buffer(report: &[u8; REPORT_SIZE]) -> [u8; REPORT_SIZE + 1] {
+pub(crate) fn output_buffer(report: &[u8; REPORT_SIZE]) -> [u8; REPORT_SIZE + 1] {
     let mut buffer = [0; REPORT_SIZE + 1];
     buffer[1..].copy_from_slice(report);
     buffer
@@ -204,7 +204,7 @@ fn exchange(
     }
 }
 
-fn vendor_interface_path(target: &Target) -> Result<&str, StatusError> {
+pub(crate) fn vendor_interface_path(target: &Target) -> Result<&str, StatusError> {
     target
         .interfaces
         .iter()
