@@ -32,8 +32,6 @@ impl fmt::Display for Abort {
 
 impl std::error::Error for Abort {}
 
-const LINUX_RECOVERY: &str = "Linux recovery: follow the Linux recovery procedure in docs/analysis/findings.md and, once approved, run python3 tools/flash.py --resume --device /dev/hidrawN --trace-log <private-dir>/flash-trace.jsonl ../HHKB800_FW_A048.hfb. Recovery from an interrupted write is unverified";
-
 const QMK_BOOTMAGIC: &str = "If QMK does not respond, references say that holding Esc while connecting USB enters update mode. This procedure is unverified";
 
 const CHECK_BY_KEY_INPUT: &str = "The HHKB state cannot be determined. Check it by key input (the USB listing cannot tell the states apart)";
@@ -52,28 +50,26 @@ impl Abort {
             Stage::ModeChangeAttempted => format!(
                 "Stage reached: after sending the mode-change report (e0). {CHECK_BY_KEY_INPUT}\n\
                  - Can type: it may be running stock firmware. Decide whether to rerun hhkb flash enter\n\
-                 - Cannot type: it may be in update mode. Replug USB, check with hhkb list, and decide whether to run hhkb flash write\n\
-                 {LINUX_RECOVERY}"
+                 - Cannot type: it may be in update mode. Replug USB, check with hhkb list, and decide whether to run hhkb flash write"
             ),
             Stage::QmkEnterNotSent => format!(
-                "Stage reached: before the QMK mode change. The report was not sent. Fix the cause, then rerun hhkb flash enter\n{QMK_BOOTMAGIC}\n{LINUX_RECOVERY}"
+                "Stage reached: before the QMK mode change. The report was not sent. Fix the cause, then rerun hhkb flash enter\n{QMK_BOOTMAGIC}"
             ),
             Stage::QmkModeChangeAttempted { command } => format!(
                 "Stage reached: after sending the mode-change report ({command:02x}) to QMK. {CHECK_BY_KEY_INPUT}\n\
                  - Can type: it may be running QMK. Check with hhkb list and decide whether to rerun hhkb flash enter\n\
                  - Cannot type: it may be in update mode. Replug USB, check with hhkb list, and decide whether to run hhkb flash write\n\
-                 {QMK_BOOTMAGIC}\n\
-                 {LINUX_RECOVERY}"
+                 {QMK_BOOTMAGIC}"
             ),
             Stage::QmkRevertRefused => format!(
                 "Stage reached: after sending f0 to QMK. f0 was refused and e0 was not sent. The mode change was stopped so that stock firmware is not restored with VIA settings left behind. {CHECK_BY_KEY_INPUT}\n\
                  Rerunning hhkb flash enter will likely give the same result, so decide what to do instead of repeating it\n\
-                 {QMK_BOOTMAGIC}\n\
-                 {LINUX_RECOVERY}"
+                 {QMK_BOOTMAGIC}"
             ),
-            Stage::WriteNotSent => format!(
-                "Stage reached: before the write. The report was not sent. Fix the cause, confirm that the HHKB cannot type, then rerun hhkb flash write\n{LINUX_RECOVERY}"
-            ),
+            Stage::WriteNotSent => {
+                "Stage reached: before the write. The report was not sent. Fix the cause, confirm that the HHKB cannot type, then rerun hhkb flash write"
+                    .to_owned()
+            }
             Stage::TransferAttempted { last_acked, total } => {
                 let progress = last_acked.map_or_else(
                     || format!("No packet was acknowledged ({total} in total)"),
@@ -82,15 +78,13 @@ impl Abort {
                 format!(
                     "Stage reached: firmware transfer. {progress}. {CHECK_BY_KEY_INPUT}\n\
                      - Cannot type: replug USB, confirm that there is no Bluetooth connection, and decide whether to rerun hhkb flash write once. Resuming midway is unverified\n\
-                     - Can type: do not run hhkb flash write; check with hhkb status\n\
-                     {LINUX_RECOVERY}"
+                     - Can type: do not run hhkb flash write; check with hhkb status"
                 )
             }
             Stage::EndAttempted => format!(
                 "Stage reached: after sending the end report (e3). All firmware packets were acknowledged. {CHECK_BY_KEY_INPUT}\n\
                  - Can type: check the version and settings with hhkb status and a read in the official tool\n\
-                 - Cannot type: replug USB, check again, and decide whether to rerun hhkb flash write\n\
-                 {LINUX_RECOVERY}"
+                 - Cannot type: replug USB, check again, and decide whether to rerun hhkb flash write"
             ),
         }
     }
@@ -174,19 +168,17 @@ mod tests {
     }
 
     #[test]
-    fn mode_change_stage_explains_both_key_input_outcomes_and_recovery() {
+    fn mode_change_stage_explains_both_key_input_outcomes() {
         let text = guidance(Stage::ModeChangeAttempted);
         assert!(text.contains("key input"), "{text}");
         assert!(text.contains("hhkb flash enter"), "{text}");
         assert!(text.contains("hhkb flash write"), "{text}");
-        assert!(text.contains("Linux"), "{text}");
     }
 
     #[test]
-    fn write_not_sent_stage_says_nothing_was_sent_and_shows_recovery() {
+    fn write_not_sent_stage_says_nothing_was_sent() {
         let text = guidance(Stage::WriteNotSent);
         assert!(text.contains("was not sent"), "{text}");
-        assert!(text.contains("Linux"), "{text}");
     }
 
     #[test]
@@ -198,7 +190,6 @@ mod tests {
         assert!(text.contains("10"), "{text}");
         assert!(text.contains("4960"), "{text}");
         assert!(text.contains("hhkb flash write"), "{text}");
-        assert!(text.contains("Linux"), "{text}");
     }
 
     #[test]
@@ -215,7 +206,6 @@ mod tests {
         let text = guidance(Stage::EndAttempted);
         assert!(text.contains("e3"), "{text}");
         assert!(text.contains("key input"), "{text}");
-        assert!(text.contains("Linux"), "{text}");
     }
 
     #[test]
@@ -234,10 +224,11 @@ mod tests {
     }
 
     #[test]
-    fn linux_recovery_refers_to_the_recorded_procedure() {
-        let text = guidance(Stage::ModeChangeAttempted);
-        assert!(text.contains("docs/analysis/findings.md"), "{text}");
-        assert!(text.contains("--resume"), "{text}");
-        assert!(!text.contains("--allow-crc-mismatch"), "{text}");
+    fn no_stage_points_to_linux() {
+        for stage in ALL_STAGES {
+            let text = guidance(stage);
+            assert!(!text.contains("Linux"), "{stage:?}: {text}");
+            assert!(!text.contains("--resume"), "{stage:?}: {text}");
+        }
     }
 }
