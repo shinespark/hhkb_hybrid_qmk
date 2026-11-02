@@ -1,8 +1,6 @@
 # HHKB Hybrid QMK
 
-HHKB Professional Hybrid（英語配列）向けの QMK をビルドし、macOS から書き込む非公式の CLI です。公式ファームウェアへ戻すこともできます。
-
-動作を確認した環境は、macOS と英語配列の 1 台だけです。
+HHKB Professional Hybrid（英語配列）向けの QMK をビルドし、macOS から書き込む非公式の CLI です。
 
 ## 免責事項
 
@@ -72,11 +70,11 @@ flowchart LR
 
 ## 必要なもの
 
-- macOS と Rust のツールチェーン: CLI のビルドと実行に使います
-- 公式の更新ファイル `local/HHKB800_FW_A048.hfb`: QMK の HFB を生成するテンプレートと、公式ファームウェアへ戻すときに使います。PFU 製のイメージを含むので本リポジトリには含みません。利用者自身で用意してください
-- Docker Desktop: QMK のビルドに使います
-- もう 1 枚のキーボード: 更新モードでは HHKB から入力できない可能性があるので、確認文の入力に使います
-- WebHID に対応したブラウザ（Chrome、Edge など）: VIA を使うときに必要です
+- macOS と Rust のツールチェーン
+- 公式の更新ファイル `local/HHKB800_FW_A048.hfb`。本リポジトリには含まないので、利用者自身で用意してください
+- Docker Desktop
+- もう 1 枚のキーボード
+- WebHID に対応したブラウザ（Chrome、Edge など）
 
 ## QMK の適用
 
