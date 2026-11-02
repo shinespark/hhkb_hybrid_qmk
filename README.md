@@ -80,15 +80,15 @@ cargo run -p hhkb -- qmk hfb via --bin local/qmk-build/via-arm64/hhkb_hybrid_via
    cargo run -p hhkb -- flash plan local/hhkb_hybrid_via.hfb
    ```
 
-2. 更新モードへ移行します。確認文は `enter update mode for qmk via` です
+2. 更新モードへ移行します。確認文は `prepare via` です
 
    ```sh
-   cargo run -p hhkb -- flash enter local/hhkb_hybrid_via.hfb
+   cargo run -p hhkb -- flash prepare local/hhkb_hybrid_via.hfb
    ```
 
 3. HHKB からキー入力できないことを確認します。USB の表示では公式ファームウェアと更新モードを区別できません。キー入力できるときは次へ進まないでください
 
-4. 本体を書き込みます。確認文は `write qmk via` で、別のキーボードで入力します
+4. 本体を書き込みます。確認文は `write via` で、別のキーボードで入力します
 
    ```sh
    caffeinate -i cargo run -p hhkb -- flash write local/hhkb_hybrid_via.hfb
@@ -107,11 +107,11 @@ cargo run -p hhkb -- qmk hfb via --bin local/qmk-build/via-arm64/hhkb_hybrid_via
 
 ```sh
 cargo run -p hhkb -- flash plan local/HHKB800_FW_A048.hfb
-cargo run -p hhkb -- flash enter local/HHKB800_FW_A048.hfb
+cargo run -p hhkb -- flash prepare local/HHKB800_FW_A048.hfb
 caffeinate -i cargo run -p hhkb -- flash write local/HHKB800_FW_A048.hfb
 ```
 
-確認文は、`flash enter` が `enter update mode for stock`、`flash write` が `write stock firmware` です。
+確認文は、`flash prepare` が `prepare stock`、`flash write` が `write stock` です。
 
 `via` から戻すと VIA の設定が消え、公式ファームウェアのキーマップが既定の配置に変わることがあります。`via` を書き込む前に `.hks` を保存し、戻した後に公式ツールで復元してください。
 
@@ -129,7 +129,7 @@ cargo run -p hhkb -- list
 |---|---|---|
 | キー入力できる | ファームウェアが動作中 | 復旧は不要です |
 | `HHKB-Hybrid` と表示され、キー入力できない | 更新モード | USB を抜き差しし、公式 HFB で `flash write` を実行します |
-| `HHKB Hybrid QMK` と表示され、`flash enter` が失敗する | QMK が動作中 | 電源を切り、Esc を押したまま USB を接続して更新モードへ入り、`flash write` を実行します |
+| `HHKB Hybrid QMK` と表示され、`flash prepare` が失敗する | QMK が動作中 | 電源を切り、Esc を押したまま USB を接続して更新モードへ入り、`flash write` を実行します |
 | `flash write` が同じ位置で止まる | Bluetooth 接続の影響の可能性 | ペアリングを削除し、USB を抜き差ししてやり直します |
 | USB に表示されない | 認識の失敗、または起動できない状態 | 次の順に試します |
 
@@ -154,7 +154,7 @@ macOS から戻せないときは、[Linux からの復旧手順](docs/analysis/
 | `status` | 状態と応答の概要を表示する | 公式ファームウェアまたは更新モードに見えるときだけ `02` |
 | `inspect <HFB>` | HFB の領域、整合性、機種、バージョンを表示する | なし |
 | `flash plan <HFB>` | HFB の種類、パケット数、接続状況を表示する | なし |
-| `flash enter <HFB>` | 更新モードへ移行する | 移行のレポート |
+| `flash prepare <HFB>` | 更新モードへ移行する | 移行のレポート |
 | `flash write <HFB>` | 更新モードの HHKB に本体を書き込む | 本体 |
 | `qmk build <keymap>` | QMK をビルドし、`.bin` が想定どおりか照合する | なし |
 | `qmk hfb <keymap>` | 公式 HFB と `.bin` から HFB を生成する | なし |

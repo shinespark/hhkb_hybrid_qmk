@@ -2,10 +2,10 @@ use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Stage {
-    EnterNotSent,
+    PrepareNotSent,
     QueryOnly,
     ModeChangeAttempted,
-    QmkEnterNotSent,
+    QmkPrepareNotSent,
     QmkModeChangeAttempted {
         command: u8,
     },
@@ -32,66 +32,59 @@ impl fmt::Display for Abort {
 
 impl std::error::Error for Abort {}
 
-const LINUX_RECOVERY: &str = "Linux からの復旧: docs/analysis/findings.md の「Linux からの復旧手順」に従い、承認を得てから python3 tools/flash.py --resume --device /dev/hidrawN --trace-log <公開しない場所>/flash-trace.jsonl ../HHKB800_FW_A048.hfb を実行します。途中で止まった状態からの復旧は未検証です";
+const QMK_BOOTMAGIC: &str = "If QMK does not respond, references say that holding Esc while connecting USB enters update mode. This procedure is unverified";
 
-const QMK_BOOTMAGIC: &str = "QMK が応答しないときは、Esc を押しながら USB を接続すると更新モードへ入れると資料にあります。この手順は未検証です";
-
-const CHECK_BY_KEY_INPUT: &str =
-    "HHKB の状態は断定できません。キー入力の可否で確認します（USB の表示では区別できません）";
+const CHECK_BY_KEY_INPUT: &str = "The HHKB state cannot be determined. Check it by key input (the USB listing cannot tell the states apart)";
 
 impl Abort {
     pub fn guidance(&self) -> String {
         match self.stage {
-            Stage::EnterNotSent => {
-                "到達した段階: 移行前。レポートは送信していません。原因を解消してから hhkb flash enter をやり直します"
+            Stage::PrepareNotSent => {
+                "Stage reached: before the mode change. The report was not sent. Fix the cause, then rerun hhkb flash prepare"
                     .to_owned()
             }
             Stage::QueryOnly => {
-                "到達した段階: 版の確認。02 だけを送り、移行のレポート（e0）は送信していません。キー入力と hhkb status で状態を確かめてから判断します"
+                "Stage reached: version check. Only 02 was sent; the mode-change report (e0) was not sent. Check the state with key input and hhkb status before deciding"
                     .to_owned()
             }
             Stage::ModeChangeAttempted => format!(
-                "到達した段階: 移行のレポート（e0）の送信後。{CHECK_BY_KEY_INPUT}\n\
-                 - 入力できる: 公式ファームウェアで動いている可能性があります。hhkb flash enter をやり直すかを判断します\n\
-                 - 入力できない: 更新モードの可能性があります。USB を抜き差しして hhkb list で確かめ、hhkb flash write を実行するかを判断します\n\
-                 {LINUX_RECOVERY}"
+                "Stage reached: after sending the mode-change report (e0). {CHECK_BY_KEY_INPUT}\n\
+                 - Can type: it may be running stock firmware. Decide whether to rerun hhkb flash prepare\n\
+                 - Cannot type: it may be in update mode. Replug USB, check with hhkb list, and decide whether to run hhkb flash write"
             ),
-            Stage::QmkEnterNotSent => format!(
-                "到達した段階: QMK の移行の前。レポートは送信していません。原因を解消してから hhkb flash enter をやり直します\n{QMK_BOOTMAGIC}\n{LINUX_RECOVERY}"
+            Stage::QmkPrepareNotSent => format!(
+                "Stage reached: before the QMK mode change. The report was not sent. Fix the cause, then rerun hhkb flash prepare\n{QMK_BOOTMAGIC}"
             ),
             Stage::QmkModeChangeAttempted { command } => format!(
-                "到達した段階: QMK への移行のレポート（{command:02x}）の送信後。{CHECK_BY_KEY_INPUT}\n\
-                 - 入力できる: QMK で動いている可能性があります。hhkb list で確かめ、hhkb flash enter をやり直すかを判断します\n\
-                 - 入力できない: 更新モードの可能性があります。USB を抜き差しして hhkb list で確かめ、hhkb flash write を実行するかを判断します\n\
-                 {QMK_BOOTMAGIC}\n\
-                 {LINUX_RECOVERY}"
+                "Stage reached: after sending the mode-change report ({command:02x}) to QMK. {CHECK_BY_KEY_INPUT}\n\
+                 - Can type: it may be running QMK. Check with hhkb list and decide whether to rerun hhkb flash prepare\n\
+                 - Cannot type: it may be in update mode. Replug USB, check with hhkb list, and decide whether to run hhkb flash write\n\
+                 {QMK_BOOTMAGIC}"
             ),
             Stage::QmkRevertRefused => format!(
-                "到達した段階: QMK への f0 の送信後。f0 は拒否され、e0 は送信していません。VIA の設定が残ったまま公式ファームウェアへ戻らないように、移行を中止しました。{CHECK_BY_KEY_INPUT}\n\
-                 hhkb flash enter をやり直しても結果は変わらない可能性が高いので、繰り返さずに判断します\n\
-                 {QMK_BOOTMAGIC}\n\
-                 {LINUX_RECOVERY}"
+                "Stage reached: after sending f0 to QMK. f0 was refused and e0 was not sent. The mode change was stopped so that stock firmware is not restored with VIA settings left behind. {CHECK_BY_KEY_INPUT}\n\
+                 Rerunning hhkb flash prepare will likely give the same result, so decide what to do instead of repeating it\n\
+                 {QMK_BOOTMAGIC}"
             ),
-            Stage::WriteNotSent => format!(
-                "到達した段階: 書き込みの前。レポートは送信していません。原因を解消し、キー入力できないことを確かめてから hhkb flash write をやり直します\n{LINUX_RECOVERY}"
-            ),
+            Stage::WriteNotSent => {
+                "Stage reached: before the write. The report was not sent. Fix the cause, confirm that the HHKB cannot type, then rerun hhkb flash write"
+                    .to_owned()
+            }
             Stage::TransferAttempted { last_acked, total } => {
                 let progress = last_acked.map_or_else(
-                    || format!("応答を確認できたパケットはありません（全 {total} 件）"),
-                    |packet| format!("応答を確認した最後のパケットは {packet} です（番号は 0 から、全 {total} 件）"),
+                    || format!("No packet was acknowledged ({total} in total)"),
+                    |packet| format!("The last acknowledged packet is {packet} (numbered from 0, {total} in total)"),
                 );
                 format!(
-                    "到達した段階: 本体の転送。{progress}。{CHECK_BY_KEY_INPUT}\n\
-                     - 入力できない: USB を抜き差しして Bluetooth の接続がないことを確かめ、hhkb flash write を 1 回だけやり直すかを判断します。途中からの再開は未検証です\n\
-                     - 入力できる: hhkb flash write を実行せず、hhkb status で確かめます\n\
-                     {LINUX_RECOVERY}"
+                    "Stage reached: firmware transfer. {progress}. {CHECK_BY_KEY_INPUT}\n\
+                     - Cannot type: replug USB, confirm that there is no Bluetooth connection, and decide whether to rerun hhkb flash write once. Resuming midway is unverified\n\
+                     - Can type: do not run hhkb flash write; check with hhkb status"
                 )
             }
             Stage::EndAttempted => format!(
-                "到達した段階: 終了のレポート（e3）の送信後。本体の全パケットの応答は確認済みです。{CHECK_BY_KEY_INPUT}\n\
-                 - 入力できる: hhkb status と公式ツールの read で版と設定を確かめます\n\
-                 - 入力できない: USB を抜き差しして再度確かめ、hhkb flash write をやり直すかを判断します\n\
-                 {LINUX_RECOVERY}"
+                "Stage reached: after sending the end report (e3). All firmware packets were acknowledged. {CHECK_BY_KEY_INPUT}\n\
+                 - Can type: check the version and settings with hhkb status and a read in the official tool\n\
+                 - Cannot type: replug USB, check again, and decide whether to rerun hhkb flash write"
             ),
         }
     }
@@ -110,16 +103,16 @@ mod tests {
     }
 
     const QMK_STAGES: [Stage; 3] = [
-        Stage::QmkEnterNotSent,
+        Stage::QmkPrepareNotSent,
         Stage::QmkModeChangeAttempted { command: 0xe0 },
         Stage::QmkRevertRefused,
     ];
 
     const ALL_STAGES: [Stage; 9] = [
-        Stage::EnterNotSent,
+        Stage::PrepareNotSent,
         Stage::QueryOnly,
         Stage::ModeChangeAttempted,
-        Stage::QmkEnterNotSent,
+        Stage::QmkPrepareNotSent,
         Stage::QmkModeChangeAttempted { command: 0xf0 },
         Stage::QmkRevertRefused,
         Stage::WriteNotSent,
@@ -134,19 +127,19 @@ mod tests {
     fn every_qmk_stage_shows_the_esc_procedure_as_unverified() {
         for stage in QMK_STAGES {
             let text = guidance(stage);
-            assert!(text.contains("Esc を押しながら"), "{stage:?}: {text}");
-            assert!(text.contains("未検証"), "{stage:?}: {text}");
+            assert!(text.contains("holding Esc"), "{stage:?}: {text}");
+            assert!(text.contains("unverified"), "{stage:?}: {text}");
         }
     }
 
     #[test]
     fn stock_stages_do_not_mention_the_qmk_procedure() {
         for stage in [
-            Stage::EnterNotSent,
+            Stage::PrepareNotSent,
             Stage::QueryOnly,
             Stage::ModeChangeAttempted,
         ] {
-            assert!(!guidance(stage).contains("Esc を押しながら"), "{stage:?}");
+            assert!(!guidance(stage).contains("holding Esc"), "{stage:?}");
         }
     }
 
@@ -159,35 +152,33 @@ mod tests {
     #[test]
     fn revert_refused_stage_says_e0_was_not_sent() {
         let text = guidance(Stage::QmkRevertRefused);
-        assert!(text.contains("e0 は送信していません"), "{text}");
+        assert!(text.contains("e0 was not sent"), "{text}");
     }
 
     #[test]
     fn nothing_sent_before_mode_change_says_so() {
-        assert!(guidance(Stage::EnterNotSent).contains("送信していません"));
+        assert!(guidance(Stage::PrepareNotSent).contains("was not sent"));
     }
 
     #[test]
     fn version_query_stage_says_the_mode_change_was_not_sent() {
         let text = guidance(Stage::QueryOnly);
         assert!(text.contains("e0"), "{text}");
-        assert!(text.contains("送信していません"), "{text}");
+        assert!(text.contains("was not sent"), "{text}");
     }
 
     #[test]
-    fn mode_change_stage_explains_both_key_input_outcomes_and_recovery() {
+    fn mode_change_stage_explains_both_key_input_outcomes() {
         let text = guidance(Stage::ModeChangeAttempted);
-        assert!(text.contains("キー入力"), "{text}");
-        assert!(text.contains("hhkb flash enter"), "{text}");
+        assert!(text.contains("key input"), "{text}");
+        assert!(text.contains("hhkb flash prepare"), "{text}");
         assert!(text.contains("hhkb flash write"), "{text}");
-        assert!(text.contains("Linux"), "{text}");
     }
 
     #[test]
-    fn write_not_sent_stage_says_nothing_was_sent_and_shows_recovery() {
+    fn write_not_sent_stage_says_nothing_was_sent() {
         let text = guidance(Stage::WriteNotSent);
-        assert!(text.contains("送信していません"), "{text}");
-        assert!(text.contains("Linux"), "{text}");
+        assert!(text.contains("was not sent"), "{text}");
     }
 
     #[test]
@@ -199,7 +190,6 @@ mod tests {
         assert!(text.contains("10"), "{text}");
         assert!(text.contains("4960"), "{text}");
         assert!(text.contains("hhkb flash write"), "{text}");
-        assert!(text.contains("Linux"), "{text}");
     }
 
     #[test]
@@ -208,15 +198,14 @@ mod tests {
             last_acked: None,
             total: 4960,
         });
-        assert!(text.contains("確認できたパケットはありません"), "{text}");
+        assert!(text.contains("No packet was acknowledged"), "{text}");
     }
 
     #[test]
     fn end_stage_asks_to_check_before_retrying() {
         let text = guidance(Stage::EndAttempted);
         assert!(text.contains("e3"), "{text}");
-        assert!(text.contains("キー入力"), "{text}");
-        assert!(text.contains("Linux"), "{text}");
+        assert!(text.contains("key input"), "{text}");
     }
 
     #[test]
@@ -224,10 +213,10 @@ mod tests {
         for stage in ALL_STAGES {
             let text = guidance(stage);
             for assertion in [
-                "更新モードです",
-                "更新モードのままです",
-                "公式ファームウェアです",
-                "壊れ",
+                "is in update mode",
+                "is still in update mode",
+                "is running stock firmware",
+                "broken",
             ] {
                 assert!(!text.contains(assertion), "{stage:?}: {text}");
             }
@@ -235,10 +224,11 @@ mod tests {
     }
 
     #[test]
-    fn linux_recovery_refers_to_the_recorded_procedure() {
-        let text = guidance(Stage::ModeChangeAttempted);
-        assert!(text.contains("docs/analysis/findings.md"), "{text}");
-        assert!(text.contains("--resume"), "{text}");
-        assert!(!text.contains("--allow-crc-mismatch"), "{text}");
+    fn no_stage_points_to_linux() {
+        for stage in ALL_STAGES {
+            let text = guidance(stage);
+            assert!(!text.contains("Linux"), "{stage:?}: {text}");
+            assert!(!text.contains("--resume"), "{stage:?}: {text}");
+        }
     }
 }

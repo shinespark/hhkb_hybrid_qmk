@@ -108,35 +108,35 @@ fn input_with_unexpected_size_is_rejected() {
 fn change_in_region_a_breaks_whole_and_region_a_crc() {
     let mut data = synthetic();
     data[0x100] ^= 0x01;
-    assert_eq!(mismatched(&data), ["全体 CRC", "領域 A CRC"]);
+    assert_eq!(mismatched(&data), ["Whole CRC", "Region A CRC"]);
 }
 
 #[test]
 fn change_in_padding_breaks_only_whole_crc() {
     let mut data = synthetic();
     data[PADDING] ^= 0x01;
-    assert_eq!(mismatched(&data), ["全体 CRC"]);
+    assert_eq!(mismatched(&data), ["Whole CRC"]);
 }
 
 #[test]
 fn change_in_region_b_breaks_whole_crc_and_md5() {
     let mut data = synthetic();
     data[0x20000] ^= 0x01;
-    assert_eq!(mismatched(&data), ["全体 CRC", "領域 B MD5"]);
+    assert_eq!(mismatched(&data), ["Whole CRC", "Region B MD5"]);
 }
 
 #[test]
 fn change_in_stored_region_a_crc_breaks_both_crcs() {
     let mut data = synthetic();
     data[2] ^= 0x01;
-    assert_eq!(mismatched(&data), ["全体 CRC", "領域 A CRC"]);
+    assert_eq!(mismatched(&data), ["Whole CRC", "Region A CRC"]);
 }
 
 #[test]
 fn change_in_stored_whole_crc_breaks_only_whole_crc() {
     let mut data = synthetic();
     data[0] ^= 0x01;
-    assert_eq!(mismatched(&data), ["全体 CRC"]);
+    assert_eq!(mismatched(&data), ["Whole CRC"]);
 }
 
 #[test]
@@ -144,7 +144,7 @@ fn model_and_version_are_read_from_the_footer() {
     let report = inspect(&synthetic()).unwrap();
     assert_eq!(report.version, Determination::Known("A0.48".to_owned()));
     let Determination::Known(model) = report.model else {
-        panic!("機種を読み取れませんでした");
+        panic!("could not read the model");
     };
     assert!(model.contains("AHUX01"));
 }
@@ -223,7 +223,7 @@ fn cli_reports_success_for_intact_file() {
     assert!(text.contains("0x10020"), "{text}");
     assert!(text.contains("A0.48"), "{text}");
     assert!(text.contains("AHUX01"), "{text}");
-    assert!(!text.contains("不一致"), "{text}");
+    assert!(!text.contains("mismatch"), "{text}");
 }
 
 #[test]
@@ -233,7 +233,7 @@ fn cli_reports_mismatch_with_failure_exit_code() {
     let file = TempFile::new("altered", &data);
     let output = run_inspect(&file);
     assert!(!output.status.success());
-    assert!(stdout(&output).contains("不一致"));
+    assert!(stdout(&output).contains("mismatch"));
 }
 
 #[test]
@@ -246,7 +246,7 @@ fn cli_reports_undetermined_with_failure_exit_code() {
     let output = run_inspect(&file);
     let text = stdout(&output);
     assert!(!output.status.success(), "{text}");
-    assert_eq!(text.matches("未確定").count(), 2, "{text}");
+    assert_eq!(text.matches("undetermined").count(), 2, "{text}");
 }
 
 #[test]
@@ -254,11 +254,7 @@ fn cli_rejects_short_file_with_reason() {
     let file = TempFile::new("short", &[0u8; 2]);
     let output = run_inspect(&file);
     assert!(!output.status.success());
-    assert!(
-        stderr(&output).contains("短すぎます"),
-        "{}",
-        stderr(&output)
-    );
+    assert!(stderr(&output).contains("too short"), "{}", stderr(&output));
 }
 
 #[test]

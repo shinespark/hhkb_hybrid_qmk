@@ -54,7 +54,7 @@ impl Log {
         if let Err(error) = self.out.write_all(line.as_bytes())
             && !self.warned
         {
-            eprintln!("警告: ログに書き込めません。通信は続けます: {error}");
+            eprintln!("Warning: cannot write to the log. Continuing communication: {error}");
             self.warned = true;
         }
     }
@@ -89,7 +89,7 @@ pub(super) fn create_log_file(parent: &Path, stage: &str) -> io::Result<File> {
     if !parent.is_dir() {
         return Err(io::Error::new(
             io::ErrorKind::NotFound,
-            format!("{} がありません", parent.display()),
+            format!("{} does not exist", parent.display()),
         ));
     }
     let directory = parent.join("logs");
@@ -135,7 +135,7 @@ mod tests {
 
     impl Write for FailingWriter {
         fn write(&mut self, _buf: &[u8]) -> io::Result<usize> {
-            Err(io::Error::other("書けません"))
+            Err(io::Error::other("cannot write"))
         }
 
         fn flush(&mut self) -> io::Result<()> {
@@ -146,19 +146,19 @@ mod tests {
     #[test]
     fn log_file_is_created_under_logs_with_owner_only_permissions() {
         let dir = TempDir::new("mode");
-        let file = create_log_file(&dir.0, "enter").unwrap();
+        let file = create_log_file(&dir.0, "prepare").unwrap();
         assert_eq!(file.metadata().unwrap().permissions().mode() & 0o777, 0o600);
         let entries: Vec<_> = fs::read_dir(dir.0.join("logs")).unwrap().collect();
         assert_eq!(entries.len(), 1);
         let name = entries[0].as_ref().unwrap().file_name();
-        assert!(name.to_string_lossy().ends_with("-flash-enter.jsonl"));
+        assert!(name.to_string_lossy().ends_with("-flash-prepare.jsonl"));
     }
 
     #[test]
     fn missing_parent_is_rejected_instead_of_created() {
         let dir = TempDir::new("missing");
         let parent = dir.0.join("local");
-        assert!(create_log_file(&parent, "enter").is_err());
+        assert!(create_log_file(&parent, "prepare").is_err());
         assert!(!parent.exists());
     }
 

@@ -22,9 +22,9 @@ impl HfbKind {
 impl fmt::Display for HfbKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
-            Self::Stock => "公式ファームウェア",
-            Self::QmkDefault => "QMK の default",
-            Self::QmkVia => "QMK の via",
+            Self::Stock => "stock firmware",
+            Self::QmkDefault => "QMK default",
+            Self::QmkVia => "QMK via",
         })
     }
 }
@@ -61,14 +61,14 @@ impl fmt::Display for VerifyError {
             Self::Structure(error) => write!(f, "{error}"),
             Self::NotAllowed { sha256 } => write!(
                 f,
-                "許可リストにない HFB です。書き込みません（SHA-256: {sha256}）"
+                "HFB is not in the allowlist. Not writing (SHA-256: {sha256})"
             ),
             Self::Integrity { failed } => write!(
                 f,
-                "整合性の検査に失敗しました。書き込みません（{}）",
-                failed.join("、")
+                "Integrity check failed. Not writing ({})",
+                failed.join(", ")
             ),
-            Self::Undetermined => write!(f, "機種か版を確定できません。書き込みません"),
+            Self::Undetermined => write!(f, "Cannot determine the model or version. Not writing"),
         }
     }
 }
@@ -239,7 +239,7 @@ mod tests {
         assert_eq!(
             verify_allowing_itself(data).unwrap_err(),
             VerifyError::Integrity {
-                failed: vec!["全体 CRC"]
+                failed: vec!["Whole CRC"]
             }
         );
     }
@@ -253,7 +253,7 @@ mod tests {
         assert_eq!(
             verify_allowing_itself(data).unwrap_err(),
             VerifyError::Integrity {
-                failed: vec!["領域 B MD5"]
+                failed: vec!["Region B MD5"]
             }
         );
     }
@@ -315,7 +315,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "local/ の 3 つの実物の HFB が必要"]
+    #[ignore = "requires the three real HFB files in local/"]
     fn the_real_files_have_the_expected_kinds() {
         let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../../local");
         for (name, kind) in [

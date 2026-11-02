@@ -64,27 +64,27 @@ impl fmt::Display for StatusError {
         match self {
             Self::OfficialToolRunning => write!(
                 f,
-                "公式ツールが実行中です。閉じてからやり直してください（デバイスは開いていません）"
+                "The official tool is running. Close it and retry (the device was not opened)"
             ),
             Self::ProcessCheckFailed(reason) => write!(
                 f,
-                "公式ツールの実行状況を確認できないので中止しました（デバイスは開いていません）: {reason}"
+                "Aborted: cannot check whether the official tool is running (the device was not opened): {reason}"
             ),
             Self::Select(error) => write!(f, "{error}"),
             Self::VendorInterfaceNotIsolated => write!(
                 f,
-                "Usage Page 0xFF00 のインターフェースが他の用途と分かれていないので開きません"
+                "Not opening: the Usage Page 0xFF00 interface is not isolated from other usages"
             ),
             Self::QmkInterfaceNotIsolated => write!(
                 f,
-                "Usage Page 0xFF60 のインターフェースが他の用途と分かれていないので開きません"
+                "Not opening: the Usage Page 0xFF60 interface is not isolated from other usages"
             ),
-            Self::Open(reason) => write!(f, "デバイスを開けません: {reason}"),
-            Self::Send(reason) => write!(f, "送信に失敗しました。再送しません: {reason}"),
-            Self::Receive(reason) => write!(f, "受信に失敗しました。再送しません: {reason}"),
+            Self::Open(reason) => write!(f, "Cannot open the device: {reason}"),
+            Self::Send(reason) => write!(f, "Send failed. Not retrying: {reason}"),
+            Self::Receive(reason) => write!(f, "Receive failed. Not retrying: {reason}"),
             Self::Timeout { command } => write!(
                 f,
-                "コマンド 0x{command:02x} の応答が制限時間内に届きませんでした。再送しません"
+                "No response to command 0x{command:02x} within the time limit. Not retrying"
             ),
         }
     }
@@ -119,8 +119,8 @@ fn interpret_pgrep(code: Option<i32>) -> Result<bool, String> {
     match code {
         Some(0) => Ok(true),
         Some(1) => Ok(false),
-        Some(code) => Err(format!("pgrep の終了コードが {code} でした")),
-        None => Err("pgrep がシグナルで終了しました".to_owned()),
+        Some(code) => Err(format!("pgrep exited with code {code}")),
+        None => Err("pgrep was terminated by a signal".to_owned()),
     }
 }
 
@@ -272,7 +272,7 @@ mod tests {
         fn send(&mut self, report: &[u8]) -> Result<(), String> {
             self.log.borrow_mut().send_attempts.push(report.to_vec());
             if self.send_fails {
-                Err("送信失敗".to_owned())
+                Err("send failed".to_owned())
             } else {
                 Ok(())
             }
@@ -284,7 +284,7 @@ mod tests {
             }
             match self.replies.pop_front() {
                 Some(Reply::Data(data)) => Ok(Some(data)),
-                Some(Reply::Fail) => Err("受信失敗".to_owned()),
+                Some(Reply::Fail) => Err("receive failed".to_owned()),
                 Some(Reply::Nothing) | None => Ok(None),
             }
         }
@@ -302,9 +302,9 @@ mod tests {
         fn open(&self, path: &str) -> Result<MockDevice, String> {
             self.log.borrow_mut().opened.push(path.to_owned());
             if self.open_fails {
-                return Err("開けません".to_owned());
+                return Err("cannot open".to_owned());
             }
-            Ok(self.device.borrow_mut().take().expect("開くのは 1 回だけ"))
+            Ok(self.device.borrow_mut().take().expect("opened only once"))
         }
     }
 
@@ -454,7 +454,7 @@ mod tests {
     fn failed_process_check_is_rejected_without_opening() {
         let (opener, log) = opener(vec![]);
         let result = check_with(
-            &FixedProcessCheck(Err("pgrep 失敗".to_owned())),
+            &FixedProcessCheck(Err("pgrep failed".to_owned())),
             &keyboard("a"),
             &opener,
             &[report(0x02)],
@@ -462,7 +462,7 @@ mod tests {
         );
         assert_eq!(
             result,
-            Err(StatusError::ProcessCheckFailed("pgrep 失敗".to_owned()))
+            Err(StatusError::ProcessCheckFailed("pgrep failed".to_owned()))
         );
         assert!(log.borrow().opened.is_empty());
     }
@@ -518,7 +518,7 @@ mod tests {
             &[report(0x02)],
             TIMEOUT,
         );
-        assert_eq!(result, Err(StatusError::Open("開けません".to_owned())));
+        assert_eq!(result, Err(StatusError::Open("cannot open".to_owned())));
         assert!(log.borrow().send_attempts.is_empty());
     }
 
@@ -569,7 +569,7 @@ mod tests {
             &[report(0x02)],
             TIMEOUT,
         );
-        assert_eq!(result, Err(StatusError::Send("送信失敗".to_owned())));
+        assert_eq!(result, Err(StatusError::Send("send failed".to_owned())));
         assert_eq!(log.borrow().send_attempts.len(), 1);
     }
 
@@ -583,7 +583,10 @@ mod tests {
             &[report(0x02)],
             TIMEOUT,
         );
-        assert_eq!(result, Err(StatusError::Receive("受信失敗".to_owned())));
+        assert_eq!(
+            result,
+            Err(StatusError::Receive("receive failed".to_owned()))
+        );
         assert_eq!(log.borrow().send_attempts.len(), 1);
     }
 
