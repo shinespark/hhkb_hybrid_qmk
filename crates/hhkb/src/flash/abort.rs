@@ -2,10 +2,10 @@ use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Stage {
-    EnterNotSent,
+    PrepareNotSent,
     QueryOnly,
     ModeChangeAttempted,
-    QmkEnterNotSent,
+    QmkPrepareNotSent,
     QmkModeChangeAttempted {
         command: u8,
     },
@@ -39,8 +39,8 @@ const CHECK_BY_KEY_INPUT: &str = "The HHKB state cannot be determined. Check it 
 impl Abort {
     pub fn guidance(&self) -> String {
         match self.stage {
-            Stage::EnterNotSent => {
-                "Stage reached: before the mode change. The report was not sent. Fix the cause, then rerun hhkb flash enter"
+            Stage::PrepareNotSent => {
+                "Stage reached: before the mode change. The report was not sent. Fix the cause, then rerun hhkb flash prepare"
                     .to_owned()
             }
             Stage::QueryOnly => {
@@ -49,21 +49,21 @@ impl Abort {
             }
             Stage::ModeChangeAttempted => format!(
                 "Stage reached: after sending the mode-change report (e0). {CHECK_BY_KEY_INPUT}\n\
-                 - Can type: it may be running stock firmware. Decide whether to rerun hhkb flash enter\n\
+                 - Can type: it may be running stock firmware. Decide whether to rerun hhkb flash prepare\n\
                  - Cannot type: it may be in update mode. Replug USB, check with hhkb list, and decide whether to run hhkb flash write"
             ),
-            Stage::QmkEnterNotSent => format!(
-                "Stage reached: before the QMK mode change. The report was not sent. Fix the cause, then rerun hhkb flash enter\n{QMK_BOOTMAGIC}"
+            Stage::QmkPrepareNotSent => format!(
+                "Stage reached: before the QMK mode change. The report was not sent. Fix the cause, then rerun hhkb flash prepare\n{QMK_BOOTMAGIC}"
             ),
             Stage::QmkModeChangeAttempted { command } => format!(
                 "Stage reached: after sending the mode-change report ({command:02x}) to QMK. {CHECK_BY_KEY_INPUT}\n\
-                 - Can type: it may be running QMK. Check with hhkb list and decide whether to rerun hhkb flash enter\n\
+                 - Can type: it may be running QMK. Check with hhkb list and decide whether to rerun hhkb flash prepare\n\
                  - Cannot type: it may be in update mode. Replug USB, check with hhkb list, and decide whether to run hhkb flash write\n\
                  {QMK_BOOTMAGIC}"
             ),
             Stage::QmkRevertRefused => format!(
                 "Stage reached: after sending f0 to QMK. f0 was refused and e0 was not sent. The mode change was stopped so that stock firmware is not restored with VIA settings left behind. {CHECK_BY_KEY_INPUT}\n\
-                 Rerunning hhkb flash enter will likely give the same result, so decide what to do instead of repeating it\n\
+                 Rerunning hhkb flash prepare will likely give the same result, so decide what to do instead of repeating it\n\
                  {QMK_BOOTMAGIC}"
             ),
             Stage::WriteNotSent => {
@@ -103,16 +103,16 @@ mod tests {
     }
 
     const QMK_STAGES: [Stage; 3] = [
-        Stage::QmkEnterNotSent,
+        Stage::QmkPrepareNotSent,
         Stage::QmkModeChangeAttempted { command: 0xe0 },
         Stage::QmkRevertRefused,
     ];
 
     const ALL_STAGES: [Stage; 9] = [
-        Stage::EnterNotSent,
+        Stage::PrepareNotSent,
         Stage::QueryOnly,
         Stage::ModeChangeAttempted,
-        Stage::QmkEnterNotSent,
+        Stage::QmkPrepareNotSent,
         Stage::QmkModeChangeAttempted { command: 0xf0 },
         Stage::QmkRevertRefused,
         Stage::WriteNotSent,
@@ -135,7 +135,7 @@ mod tests {
     #[test]
     fn stock_stages_do_not_mention_the_qmk_procedure() {
         for stage in [
-            Stage::EnterNotSent,
+            Stage::PrepareNotSent,
             Stage::QueryOnly,
             Stage::ModeChangeAttempted,
         ] {
@@ -157,7 +157,7 @@ mod tests {
 
     #[test]
     fn nothing_sent_before_mode_change_says_so() {
-        assert!(guidance(Stage::EnterNotSent).contains("was not sent"));
+        assert!(guidance(Stage::PrepareNotSent).contains("was not sent"));
     }
 
     #[test]
@@ -171,7 +171,7 @@ mod tests {
     fn mode_change_stage_explains_both_key_input_outcomes() {
         let text = guidance(Stage::ModeChangeAttempted);
         assert!(text.contains("key input"), "{text}");
-        assert!(text.contains("hhkb flash enter"), "{text}");
+        assert!(text.contains("hhkb flash prepare"), "{text}");
         assert!(text.contains("hhkb flash write"), "{text}");
     }
 

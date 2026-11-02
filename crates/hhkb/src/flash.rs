@@ -63,11 +63,11 @@ fn abort_at(stage: Stage) -> impl Fn(String) -> Abort {
     move |reason| Abort { stage, reason }
 }
 
-const fn enter_phrase(kind: HfbKind) -> &'static str {
+const fn prepare_phrase(kind: HfbKind) -> &'static str {
     match kind {
-        HfbKind::Stock => "enter stock",
-        HfbKind::QmkDefault => "enter default",
-        HfbKind::QmkVia => "enter via",
+        HfbKind::Stock => "prepare stock",
+        HfbKind::QmkDefault => "prepare default",
+        HfbKind::QmkVia => "prepare via",
     }
 }
 
@@ -193,33 +193,33 @@ fn wait_for_update_interface(
     }
 }
 
-fn enter_with(platform: &mut impl Platform, hfb: &VerifiedHfb) -> Result<(), Abort> {
-    let target = precheck(platform, Stage::EnterNotSent)?;
+fn prepare_with(platform: &mut impl Platform, hfb: &VerifiedHfb) -> Result<(), Abort> {
+    let target = precheck(platform, Stage::PrepareNotSent)?;
     match target.state {
-        DeviceState::StockOrUpdate => enter_from_stock(platform, hfb, &target),
-        DeviceState::QmkLikely => enter_from_qmk(platform, hfb, &target),
-        DeviceState::Undetermined => Err(abort_at(Stage::EnterNotSent)(UNDETERMINED.to_owned())),
+        DeviceState::StockOrUpdate => prepare_from_stock(platform, hfb, &target),
+        DeviceState::QmkLikely => prepare_from_qmk(platform, hfb, &target),
+        DeviceState::Undetermined => Err(abort_at(Stage::PrepareNotSent)(UNDETERMINED.to_owned())),
     }
 }
 
-fn enter_from_stock(
+fn prepare_from_stock(
     platform: &mut impl Platform,
     hfb: &VerifiedHfb,
     target: &Target,
 ) -> Result<(), Abort> {
     let path = vendor_interface_path(target)
-        .map_err(|error| abort_at(Stage::EnterNotSent)(error.to_string()))?;
+        .map_err(|error| abort_at(Stage::PrepareNotSent)(error.to_string()))?;
     let kind = hfb.kind();
     confirm(
         platform,
-        Stage::EnterNotSent,
+        Stage::PrepareNotSent,
         &format!(
             "Switching the HHKB to update mode (HFB to write: {kind}). Checks the device version, then sends the mode-change report. Does not write the firmware. {}",
             kind_warning(kind)
         ),
-        enter_phrase(kind),
+        prepare_phrase(kind),
     )?;
-    let (mut log, mut device) = open_session(platform, "enter", path, Stage::EnterNotSent)?;
+    let (mut log, mut device) = open_session(platform, "prepare", path, Stage::PrepareNotSent)?;
 
     let query_only = abort_at(Stage::QueryOnly);
     let response = exchange(
@@ -243,16 +243,16 @@ fn enter_from_stock(
     )
     .map_err(|error| attempted(error.to_string()))?;
     drop(device);
-    finish_enter(platform, &mut log, Stage::ModeChangeAttempted)
+    finish_prepare(platform, &mut log, Stage::ModeChangeAttempted)
 }
 
-fn enter_from_qmk(
+fn prepare_from_qmk(
     platform: &mut impl Platform,
     hfb: &VerifiedHfb,
     target: &Target,
 ) -> Result<(), Abort> {
     let path = qmk_interface_path(target)
-        .map_err(|error| abort_at(Stage::QmkEnterNotSent)(error.to_string()))?;
+        .map_err(|error| abort_at(Stage::QmkPrepareNotSent)(error.to_string()))?;
     let kind = hfb.kind();
     let plan = if kind.is_qmk() {
         "Sends the mode-change report (e0). "
@@ -261,32 +261,32 @@ fn enter_from_qmk(
     };
     confirm(
         platform,
-        Stage::QmkEnterNotSent,
+        Stage::QmkPrepareNotSent,
         &format!(
             "QMK appears to be running (HFB to write: {kind}). {plan}Does not write the firmware. {}",
             kind_warning(kind)
         ),
-        enter_phrase(kind),
+        prepare_phrase(kind),
     )?;
-    let (mut log, mut device) = open_session(platform, "enter", path, Stage::QmkEnterNotSent)?;
+    let (mut log, mut device) = open_session(platform, "prepare", path, Stage::QmkPrepareNotSent)?;
 
     let stage = if kind.is_qmk() {
-        qmk_enter_with_e0(&mut device, &mut log)?
+        qmk_prepare_with_e0(&mut device, &mut log)?
     } else {
-        qmk_enter_for_stock(&mut device, &mut log)?
+        qmk_prepare_for_stock(&mut device, &mut log)?
     };
     drop(device);
-    finish_enter(platform, &mut log, stage)
+    finish_prepare(platform, &mut log, stage)
 }
 
-fn qmk_enter_with_e0(device: &mut impl ReportChannel, log: &mut Log) -> Result<Stage, Abort> {
+fn qmk_prepare_with_e0(device: &mut impl ReportChannel, log: &mut Log) -> Result<Stage, Abort> {
     let stage = Stage::QmkModeChangeAttempted { command: 0xe0 };
     qmk_mode_change(device, log, RESPONSE_TIMEOUT)
         .map_err(|error| abort_at(stage)(error.to_string()))?;
     Ok(stage)
 }
 
-fn qmk_enter_for_stock(device: &mut impl ReportChannel, log: &mut Log) -> Result<Stage, Abort> {
+fn qmk_prepare_for_stock(device: &mut impl ReportChannel, log: &mut Log) -> Result<Stage, Abort> {
     let stage = Stage::QmkModeChangeAttempted { command: 0xf0 };
     let answer = qmk_stock_revert(device, log, RESPONSE_TIMEOUT)
         .map_err(|error| abort_at(stage)(error.to_string()))?;
@@ -302,10 +302,10 @@ fn qmk_enter_for_stock(device: &mut impl ReportChannel, log: &mut Log) -> Result
             "Not switching: f0 was refused and VIA answered the query".to_owned(),
         ));
     }
-    qmk_enter_with_e0(device, log)
+    qmk_prepare_with_e0(device, log)
 }
 
-fn finish_enter(platform: &mut impl Platform, log: &mut Log, stage: Stage) -> Result<(), Abort> {
+fn finish_prepare(platform: &mut impl Platform, log: &mut Log, stage: Stage) -> Result<(), Abort> {
     let attempted = abort_at(stage);
     println!(
         "Mode-change report acknowledged. Waiting {} seconds for re-enumeration",
@@ -337,7 +337,7 @@ fn write_with(platform: &mut impl Platform, hfb: &VerifiedHfb) -> Result<(), Abo
         DeviceState::StockOrUpdate => {}
         DeviceState::QmkLikely => {
             return Err(not_sent(
-                "Not writing: QMK appears to be running. Run hhkb flash enter first to switch to update mode"
+                "Not writing: QMK appears to be running. Run hhkb flash prepare first to switch to update mode"
                     .to_owned(),
             ));
         }
@@ -447,8 +447,8 @@ fn system_platform(stage: Stage) -> Result<SystemPlatform, Abort> {
         })
 }
 
-pub fn enter(hfb: &VerifiedHfb) -> Result<(), Abort> {
-    enter_with(&mut system_platform(Stage::EnterNotSent)?, hfb)
+pub fn prepare(hfb: &VerifiedHfb) -> Result<(), Abort> {
+    prepare_with(&mut system_platform(Stage::PrepareNotSent)?, hfb)
 }
 
 pub fn write(hfb: &VerifiedHfb) -> Result<(), Abort> {
@@ -490,7 +490,7 @@ mod tests {
     };
 
     const SERIAL_MARKER: u8 = 0xcd;
-    const ENTER_PHRASE: &str = enter_phrase(HfbKind::Stock);
+    const PREPARE_PHRASE: &str = prepare_phrase(HfbKind::Stock);
     const WRITE_PHRASE: &str = write_phrase(HfbKind::Stock);
     const VIA_PROBE_KEY: u8 = 0x00;
 
@@ -666,8 +666,8 @@ mod tests {
         ]
     }
 
-    fn enter_platform() -> MockPlatform {
-        MockPlatform::new(vec![keyboard("a"), keyboard("b")], ENTER_PHRASE)
+    fn prepare_platform() -> MockPlatform {
+        MockPlatform::new(vec![keyboard("a"), keyboard("b")], PREPARE_PHRASE)
     }
 
     fn write_platform() -> MockPlatform {
@@ -702,161 +702,161 @@ mod tests {
     }
 
     #[test]
-    fn enter_sends_the_version_query_then_mode_change_only() {
-        let mut platform = enter_platform();
-        enter_with(&mut platform, &hfb()).unwrap();
+    fn prepare_sends_the_version_query_then_mode_change_only() {
+        let mut platform = prepare_platform();
+        prepare_with(&mut platform, &hfb()).unwrap();
         assert_eq!(platform.commands(), [0x02, 0xe0]);
     }
 
     #[test]
-    fn enter_opens_the_reselected_interface_without_sending() {
-        let mut platform = enter_platform();
-        enter_with(&mut platform, &hfb()).unwrap();
+    fn prepare_opens_the_reselected_interface_without_sending() {
+        let mut platform = prepare_platform();
+        prepare_with(&mut platform, &hfb()).unwrap();
         assert_eq!(platform.opened, ["a-vendor", "b-vendor"]);
         assert_eq!(platform.commands().len(), 2);
     }
 
     #[test]
-    fn enter_waits_before_listing_devices_again() {
-        let mut platform = enter_platform();
-        enter_with(&mut platform, &hfb()).unwrap();
+    fn prepare_waits_before_listing_devices_again() {
+        let mut platform = prepare_platform();
+        prepare_with(&mut platform, &hfb()).unwrap();
         assert_eq!(platform.sleep_before_scans, [Duration::ZERO, SETTLE_WAIT]);
     }
 
     #[test]
-    fn official_tool_running_stops_enter_before_opening() {
-        let mut platform = enter_platform();
+    fn official_tool_running_stops_prepare_before_opening() {
+        let mut platform = prepare_platform();
         platform.tool = Ok(true);
-        let abort = enter_with(&mut platform, &hfb()).unwrap_err();
-        assert_eq!(abort.stage, Stage::EnterNotSent);
+        let abort = prepare_with(&mut platform, &hfb()).unwrap_err();
+        assert_eq!(abort.stage, Stage::PrepareNotSent);
         assert!(platform.opened.is_empty());
         assert!(platform.prompts.is_empty());
     }
 
     #[test]
-    fn failed_tool_check_stops_enter_before_opening() {
-        let mut platform = enter_platform();
+    fn failed_tool_check_stops_prepare_before_opening() {
+        let mut platform = prepare_platform();
         platform.tool = Err("pgrep failed".to_owned());
-        assert!(enter_with(&mut platform, &hfb()).is_err());
+        assert!(prepare_with(&mut platform, &hfb()).is_err());
         assert!(platform.opened.is_empty());
     }
 
     #[test]
-    fn no_keyboard_stops_enter_before_opening() {
-        let mut platform = MockPlatform::new(vec![vec![]], ENTER_PHRASE);
-        assert!(enter_with(&mut platform, &hfb()).is_err());
+    fn no_keyboard_stops_prepare_before_opening() {
+        let mut platform = MockPlatform::new(vec![vec![]], PREPARE_PHRASE);
+        assert!(prepare_with(&mut platform, &hfb()).is_err());
         assert!(platform.opened.is_empty());
     }
 
     #[test]
-    fn two_keyboards_stop_enter_before_opening() {
+    fn two_keyboards_stop_prepare_before_opening() {
         let mut both = keyboard("a");
         both.extend(keyboard("b"));
-        let mut platform = MockPlatform::new(vec![both], ENTER_PHRASE);
-        assert!(enter_with(&mut platform, &hfb()).is_err());
+        let mut platform = MockPlatform::new(vec![both], PREPARE_PHRASE);
+        assert!(prepare_with(&mut platform, &hfb()).is_err());
         assert!(platform.opened.is_empty());
     }
 
     #[test]
-    fn shared_vendor_interface_stops_enter_before_opening() {
+    fn shared_vendor_interface_stops_prepare_before_opening() {
         let mixed = vec![
             entry("mixed", Transport::Usb, VENDOR_USAGE_PAGE, 0x0001),
             entry("mixed", Transport::Usb, 0x0001, 0x0006),
         ];
-        let mut platform = MockPlatform::new(vec![mixed], ENTER_PHRASE);
-        assert!(enter_with(&mut platform, &hfb()).is_err());
+        let mut platform = MockPlatform::new(vec![mixed], PREPARE_PHRASE);
+        assert!(prepare_with(&mut platform, &hfb()).is_err());
         assert!(platform.opened.is_empty());
     }
 
     #[test]
-    fn wrong_confirmation_stops_enter_before_opening() {
+    fn wrong_confirmation_stops_prepare_before_opening() {
         for answer in [
             "",
             "\n",
             "yes\n",
-            "ENTER STOCK\n",
-            "enter stock \n",
-            "enter\n",
-            "enter default\n",
+            "PREPARE STOCK\n",
+            "prepare stock \n",
+            "prepare\n",
+            "prepare default\n",
             "write stock\n",
         ] {
-            let mut platform = enter_platform();
+            let mut platform = prepare_platform();
             platform.answer = Ok(answer.to_owned());
-            let abort = enter_with(&mut platform, &hfb()).unwrap_err();
-            assert_eq!(abort.stage, Stage::EnterNotSent, "{answer:?}");
+            let abort = prepare_with(&mut platform, &hfb()).unwrap_err();
+            assert_eq!(abort.stage, Stage::PrepareNotSent, "{answer:?}");
             assert!(platform.opened.is_empty(), "{answer:?}");
         }
     }
 
     #[test]
-    fn failed_confirmation_read_stops_enter() {
-        let mut platform = enter_platform();
+    fn failed_confirmation_read_stops_prepare() {
+        let mut platform = prepare_platform();
         platform.answer = Err("cannot read".to_owned());
-        assert!(enter_with(&mut platform, &hfb()).is_err());
+        assert!(prepare_with(&mut platform, &hfb()).is_err());
         assert!(platform.opened.is_empty());
     }
 
     #[test]
     fn the_prompt_contains_its_phrase() {
-        let mut platform = enter_platform();
-        enter_with(&mut platform, &hfb()).unwrap();
-        assert!(platform.prompts[0].contains(ENTER_PHRASE));
+        let mut platform = prepare_platform();
+        prepare_with(&mut platform, &hfb()).unwrap();
+        assert!(platform.prompts[0].contains(PREPARE_PHRASE));
     }
 
     #[test]
-    fn failing_log_stops_enter_before_opening() {
-        let mut platform = enter_platform();
+    fn failing_log_stops_prepare_before_opening() {
+        let mut platform = prepare_platform();
         platform.log_fails = true;
-        assert!(enter_with(&mut platform, &hfb()).is_err());
+        assert!(prepare_with(&mut platform, &hfb()).is_err());
         assert!(platform.opened.is_empty());
     }
 
     #[test]
     fn version_mismatch_stops_before_mode_change() {
-        let mut platform = enter_platform();
+        let mut platform = prepare_platform();
         platform
             .replies
             .insert(0x02, Reply::Bytes(info_reply([0x04, 0x09])));
-        let abort = enter_with(&mut platform, &hfb()).unwrap_err();
+        let abort = prepare_with(&mut platform, &hfb()).unwrap_err();
         assert_eq!(abort.stage, Stage::QueryOnly);
         assert_eq!(platform.commands(), [0x02]);
     }
 
     #[test]
     fn missing_version_response_stops_before_mode_change() {
-        let mut platform = enter_platform();
+        let mut platform = prepare_platform();
         platform.replies.insert(0x02, Reply::Nothing);
-        let abort = enter_with(&mut platform, &hfb()).unwrap_err();
+        let abort = prepare_with(&mut platform, &hfb()).unwrap_err();
         assert_eq!(abort.stage, Stage::QueryOnly);
         assert_eq!(platform.commands(), [0x02]);
     }
 
     #[test]
     fn truncated_version_response_stops_before_mode_change() {
-        let mut platform = enter_platform();
+        let mut platform = prepare_platform();
         let mut short = info_reply([0x04, 0x08]);
         short.truncate(48);
         platform.replies.insert(0x02, Reply::Bytes(short));
-        let abort = enter_with(&mut platform, &hfb()).unwrap_err();
+        let abort = prepare_with(&mut platform, &hfb()).unwrap_err();
         assert_eq!(abort.stage, Stage::QueryOnly);
         assert_eq!(platform.commands(), [0x02]);
     }
 
     #[test]
     fn version_error_does_not_show_other_response_bytes() {
-        let mut platform = enter_platform();
+        let mut platform = prepare_platform();
         platform
             .replies
             .insert(0x02, Reply::Bytes(info_reply([0x04, 0x09])));
-        let abort = enter_with(&mut platform, &hfb()).unwrap_err();
+        let abort = prepare_with(&mut platform, &hfb()).unwrap_err();
         assert!(!abort.to_string().to_lowercase().contains("cd"));
     }
 
     #[test]
     fn failed_mode_change_reports_the_attempted_stage() {
-        let mut platform = enter_platform();
+        let mut platform = prepare_platform();
         platform.replies.insert(0xe0, Reply::Nothing);
-        let abort = enter_with(&mut platform, &hfb()).unwrap_err();
+        let abort = prepare_with(&mut platform, &hfb()).unwrap_err();
         assert_eq!(abort.stage, Stage::ModeChangeAttempted);
         assert_eq!(platform.commands(), [0x02, 0xe0]);
         assert_eq!(platform.opened, ["a-vendor"]);
@@ -864,8 +864,8 @@ mod tests {
 
     #[test]
     fn missing_interface_after_mode_change_ends_without_opening_or_sending() {
-        let mut platform = MockPlatform::new(vec![keyboard("a"), vec![]], ENTER_PHRASE);
-        let abort = enter_with(&mut platform, &hfb()).unwrap_err();
+        let mut platform = MockPlatform::new(vec![keyboard("a"), vec![]], PREPARE_PHRASE);
+        let abort = prepare_with(&mut platform, &hfb()).unwrap_err();
         assert_eq!(abort.stage, Stage::ModeChangeAttempted);
         assert_eq!(platform.opened, ["a-vendor"]);
         assert_eq!(platform.commands(), [0x02, 0xe0]);
@@ -876,9 +876,9 @@ mod tests {
     fn interface_appearing_after_a_replug_is_used() {
         let mut platform = MockPlatform::new(
             vec![keyboard("a"), vec![], vec![], keyboard("c")],
-            ENTER_PHRASE,
+            PREPARE_PHRASE,
         );
-        enter_with(&mut platform, &hfb()).unwrap();
+        prepare_with(&mut platform, &hfb()).unwrap();
         assert_eq!(platform.opened, ["a-vendor", "c-vendor"]);
     }
 
@@ -896,8 +896,8 @@ mod tests {
             two_keyboards,
         ];
         for scan in cases {
-            let mut platform = MockPlatform::new(vec![keyboard("a"), scan.clone()], ENTER_PHRASE);
-            assert!(enter_with(&mut platform, &hfb()).is_err(), "{scan:?}");
+            let mut platform = MockPlatform::new(vec![keyboard("a"), scan.clone()], PREPARE_PHRASE);
+            assert!(prepare_with(&mut platform, &hfb()).is_err(), "{scan:?}");
             assert_eq!(platform.opened, ["a-vendor"], "{scan:?}");
             assert_eq!(platform.commands(), [0x02, 0xe0], "{scan:?}");
         }
@@ -905,9 +905,9 @@ mod tests {
 
     #[test]
     fn unopenable_interface_after_mode_change_is_reported() {
-        let mut platform = enter_platform();
+        let mut platform = prepare_platform();
         platform.open_failures = VecDeque::from([false, true]);
-        let abort = enter_with(&mut platform, &hfb()).unwrap_err();
+        let abort = prepare_with(&mut platform, &hfb()).unwrap_err();
         assert_eq!(abort.stage, Stage::ModeChangeAttempted);
         assert_eq!(platform.commands(), [0x02, 0xe0]);
     }
@@ -993,9 +993,9 @@ mod tests {
     }
 
     #[test]
-    fn enter_log_records_the_full_responses() {
-        let mut platform = enter_platform();
-        enter_with(&mut platform, &hfb()).unwrap();
+    fn prepare_log_records_the_full_responses() {
+        let mut platform = prepare_platform();
+        prepare_with(&mut platform, &hfb()).unwrap();
         let info: String = info_reply([0x04, 0x08])
             .iter()
             .map(|b| format!("{b:02x}"))
@@ -1025,7 +1025,7 @@ mod tests {
 
     fn qmk_platform(kind: HfbKind) -> MockPlatform {
         let mut platform =
-            MockPlatform::new(vec![qmk_keyboard(), keyboard("u")], enter_phrase(kind));
+            MockPlatform::new(vec![qmk_keyboard(), keyboard("u")], prepare_phrase(kind));
         platform.replies = HashMap::from([
             (0xe0, qmk_reply(&[0x55, 0x55, 0xe0, 0x00, 0x00])),
             (0xf0, qmk_reply(&[0x55, 0x55, 0xf0, 0x00, 0x00])),
@@ -1047,7 +1047,7 @@ mod tests {
     fn qmk_to_qmk_sends_only_e0_as_32_bytes_to_the_raw_interface() {
         for kind in QMK_KINDS {
             let mut platform = qmk_platform(kind);
-            enter_with(&mut platform, &verified_synthetic_as(kind)).unwrap();
+            prepare_with(&mut platform, &verified_synthetic_as(kind)).unwrap();
             let shared = platform.shared.borrow();
             assert_eq!(shared.sent.len(), 1, "{kind:?}");
             assert_eq!(shared.sent[0].len(), 32, "{kind:?}");
@@ -1059,7 +1059,7 @@ mod tests {
     #[test]
     fn qmk_to_stock_sends_f0_first_and_stops_when_accepted() {
         let mut platform = qmk_platform(HfbKind::Stock);
-        enter_with(&mut platform, &hfb()).unwrap();
+        prepare_with(&mut platform, &hfb()).unwrap();
         assert_eq!(platform.commands(), [0xf0]);
         assert_eq!(platform.shared.borrow().sent[0].len(), 32);
         assert_eq!(platform.opened, ["q-raw", "u-vendor"]);
@@ -1069,7 +1069,7 @@ mod tests {
     fn rejected_f0_without_a_via_answer_falls_back_to_e0() {
         let mut platform = qmk_platform(HfbKind::Stock);
         reject_f0(&mut platform);
-        enter_with(&mut platform, &hfb()).unwrap();
+        prepare_with(&mut platform, &hfb()).unwrap();
         let shared = platform.shared.borrow();
         assert_eq!(shared.sent.len(), 3);
         assert_eq!(shared.sent[0][2], 0xf0);
@@ -1084,7 +1084,7 @@ mod tests {
             let mut platform = qmk_platform(HfbKind::Stock);
             reject_f0(&mut platform);
             platform.replies.insert(VIA_PROBE_KEY, qmk_reply(head));
-            let abort = enter_with(&mut platform, &hfb()).unwrap_err();
+            let abort = prepare_with(&mut platform, &hfb()).unwrap_err();
             assert_eq!(abort.stage, Stage::QmkRevertRefused, "{head:?}");
             assert_eq!(platform.commands().len(), 2, "{head:?}");
             assert!(!platform.commands().contains(&0xe0), "{head:?}");
@@ -1101,7 +1101,7 @@ mod tests {
         ] {
             let mut platform = qmk_platform(kind);
             platform.replies.insert(command, Reply::Nothing);
-            let abort = enter_with(&mut platform, &verified_synthetic_as(kind)).unwrap_err();
+            let abort = prepare_with(&mut platform, &verified_synthetic_as(kind)).unwrap_err();
             assert_eq!(abort.stage, Stage::QmkModeChangeAttempted { command });
             assert!(abort.guidance().contains("holding Esc"));
             assert!(abort.guidance().contains("unverified"));
@@ -1115,19 +1115,20 @@ mod tests {
             qmk_entry("mixed", QMK_USAGE_PAGE, 0x0061),
             qmk_entry("mixed", 0x0001, 0x0006),
         ];
-        let mut platform = MockPlatform::new(vec![mixed], enter_phrase(HfbKind::QmkVia));
-        let abort = enter_with(&mut platform, &verified_synthetic_as(HfbKind::QmkVia)).unwrap_err();
-        assert_eq!(abort.stage, Stage::QmkEnterNotSent);
+        let mut platform = MockPlatform::new(vec![mixed], prepare_phrase(HfbKind::QmkVia));
+        let abort =
+            prepare_with(&mut platform, &verified_synthetic_as(HfbKind::QmkVia)).unwrap_err();
+        assert_eq!(abort.stage, Stage::QmkPrepareNotSent);
         assert!(platform.opened.is_empty());
     }
 
     #[test]
-    fn waiting_after_qmk_enter_does_not_open_while_the_raw_interface_is_visible() {
+    fn waiting_after_qmk_prepare_does_not_open_while_the_raw_interface_is_visible() {
         let kind = HfbKind::QmkDefault;
         let mut platform = qmk_platform(kind);
         platform.scans = VecDeque::from([qmk_keyboard(), qmk_keyboard(), qmk_keyboard()]);
         platform.last_scan = qmk_keyboard();
-        let abort = enter_with(&mut platform, &verified_synthetic_as(kind)).unwrap_err();
+        let abort = prepare_with(&mut platform, &verified_synthetic_as(kind)).unwrap_err();
         assert_eq!(abort.stage, Stage::QmkModeChangeAttempted { command: 0xe0 });
         assert_eq!(platform.opened, ["q-raw"]);
         assert_eq!(platform.commands(), [0xe0]);
@@ -1139,7 +1140,7 @@ mod tests {
         let kind = HfbKind::QmkDefault;
         let mut platform = qmk_platform(kind);
         platform.scans = VecDeque::from([qmk_keyboard(), qmk_keyboard(), vec![], keyboard("u")]);
-        enter_with(&mut platform, &verified_synthetic_as(kind)).unwrap();
+        prepare_with(&mut platform, &verified_synthetic_as(kind)).unwrap();
         assert_eq!(platform.opened, ["q-raw", "u-vendor"]);
         assert_eq!(platform.commands(), [0xe0]);
     }
@@ -1153,11 +1154,11 @@ mod tests {
     }
 
     #[test]
-    fn undetermined_state_stops_enter_before_asking() {
+    fn undetermined_state_stops_prepare_before_asking() {
         for scan in undetermined_scans() {
-            let mut platform = MockPlatform::new(vec![scan.clone()], ENTER_PHRASE);
-            let abort = enter_with(&mut platform, &hfb()).unwrap_err();
-            assert_eq!(abort.stage, Stage::EnterNotSent, "{scan:?}");
+            let mut platform = MockPlatform::new(vec![scan.clone()], PREPARE_PHRASE);
+            let abort = prepare_with(&mut platform, &hfb()).unwrap_err();
+            assert_eq!(abort.stage, Stage::PrepareNotSent, "{scan:?}");
             assert!(platform.opened.is_empty(), "{scan:?}");
             assert!(platform.prompts.is_empty(), "{scan:?}");
         }
@@ -1166,8 +1167,8 @@ mod tests {
     #[test]
     fn undetermined_state_after_mode_change_is_not_opened() {
         for scan in undetermined_scans() {
-            let mut platform = MockPlatform::new(vec![keyboard("a"), scan.clone()], ENTER_PHRASE);
-            assert!(enter_with(&mut platform, &hfb()).is_err(), "{scan:?}");
+            let mut platform = MockPlatform::new(vec![keyboard("a"), scan.clone()], PREPARE_PHRASE);
+            assert!(prepare_with(&mut platform, &hfb()).is_err(), "{scan:?}");
             assert_eq!(platform.opened, ["a-vendor"], "{scan:?}");
         }
     }
@@ -1178,7 +1179,7 @@ mod tests {
             let mut platform = MockPlatform::new(vec![qmk_keyboard()], write_phrase(kind));
             let abort = write_with(&mut platform, &verified_synthetic_as(kind)).unwrap_err();
             assert_eq!(abort.stage, Stage::WriteNotSent, "{kind:?}");
-            assert!(abort.reason.contains("hhkb flash enter"), "{kind:?}");
+            assert!(abort.reason.contains("hhkb flash prepare"), "{kind:?}");
             assert!(platform.opened.is_empty(), "{kind:?}");
             assert!(platform.prompts.is_empty(), "{kind:?}");
         }
@@ -1199,8 +1200,8 @@ mod tests {
         for kind in ALL_KINDS {
             let hfb = verified_synthetic_as(kind);
             let mut platform =
-                MockPlatform::new(vec![keyboard("a"), keyboard("b")], enter_phrase(kind));
-            enter_with(&mut platform, &hfb).unwrap();
+                MockPlatform::new(vec![keyboard("a"), keyboard("b")], prepare_phrase(kind));
+            prepare_with(&mut platform, &hfb).unwrap();
             assert_eq!(platform.commands(), [0x02, 0xe0], "{kind:?}");
             assert!(
                 platform.shared.borrow().sent.iter().all(|f| f.len() == 64),
@@ -1219,7 +1220,7 @@ mod tests {
     fn every_phrase_is_distinct_and_only_its_own_stage_and_kind_is_accepted() {
         let phrases: Vec<&str> = ALL_KINDS
             .iter()
-            .flat_map(|kind| [enter_phrase(*kind), write_phrase(*kind)])
+            .flat_map(|kind| [prepare_phrase(*kind), write_phrase(*kind)])
             .collect();
         for (index, phrase) in phrases.iter().enumerate() {
             assert!(!phrases[index + 1..].contains(phrase), "{phrase}");
@@ -1228,9 +1229,13 @@ mod tests {
             let hfb = verified_synthetic_as(kind);
             for phrase in &phrases {
                 let mut platform = MockPlatform::new(vec![keyboard("a"), keyboard("b")], phrase);
-                let entered = enter_with(&mut platform, &hfb);
-                assert_eq!(entered.is_ok(), *phrase == enter_phrase(kind), "{phrase}");
-                if entered.is_err() {
+                let prepared = prepare_with(&mut platform, &hfb);
+                assert_eq!(
+                    prepared.is_ok(),
+                    *phrase == prepare_phrase(kind),
+                    "{phrase}"
+                );
+                if prepared.is_err() {
                     assert!(platform.commands().is_empty(), "{phrase}");
                 }
 
@@ -1243,8 +1248,12 @@ mod tests {
 
                 let mut platform = qmk_platform(kind);
                 platform.answer = Ok(format!("{phrase}\n"));
-                let from_qmk = enter_with(&mut platform, &hfb);
-                assert_eq!(from_qmk.is_ok(), *phrase == enter_phrase(kind), "{phrase}");
+                let from_qmk = prepare_with(&mut platform, &hfb);
+                assert_eq!(
+                    from_qmk.is_ok(),
+                    *phrase == prepare_phrase(kind),
+                    "{phrase}"
+                );
                 if from_qmk.is_err() {
                     assert!(platform.commands().is_empty(), "{phrase}");
                 }
@@ -1256,12 +1265,12 @@ mod tests {
     fn prompts_name_the_kind_and_warn_only_for_qmk() {
         for kind in ALL_KINDS {
             let hfb = verified_synthetic_as(kind);
-            let mut enter =
-                MockPlatform::new(vec![keyboard("a"), keyboard("b")], enter_phrase(kind));
-            enter_with(&mut enter, &hfb).unwrap();
+            let mut prepare =
+                MockPlatform::new(vec![keyboard("a"), keyboard("b")], prepare_phrase(kind));
+            prepare_with(&mut prepare, &hfb).unwrap();
             let mut write = MockPlatform::new(vec![keyboard("a")], write_phrase(kind));
             write_with(&mut write, &hfb).unwrap();
-            for prompt in [&enter.prompts[0], &write.prompts[0]] {
+            for prompt in [&prepare.prompts[0], &write.prompts[0]] {
                 assert!(prompt.contains(&kind.to_string()), "{prompt}");
                 assert_eq!(
                     prompt.contains("warranty") && prompt.contains("disassemble"),
@@ -1275,14 +1284,14 @@ mod tests {
     #[test]
     fn stock_prompt_from_qmk_says_via_settings_are_erased() {
         let mut platform = qmk_platform(HfbKind::Stock);
-        enter_with(&mut platform, &hfb()).unwrap();
+        prepare_with(&mut platform, &hfb()).unwrap();
         assert!(platform.prompts[0].contains("VIA settings will be erased"));
     }
 
     #[test]
     fn rejected_confirmation_creates_no_log() {
         let mut platform = MockPlatform::new(vec![keyboard("a")], "no");
-        assert!(enter_with(&mut platform, &hfb()).is_err());
+        assert!(prepare_with(&mut platform, &hfb()).is_err());
         assert_eq!(platform.logs_opened, 0);
     }
 }

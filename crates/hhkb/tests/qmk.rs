@@ -63,7 +63,7 @@ fn generated_image_is_rejected_by_every_flash_stage() {
     let file = TempFile::new("generated", &generated);
     let inspected = hhkb(&["inspect", file.0.to_str().unwrap()]);
     assert!(inspected.status.success());
-    for stage in ["plan", "enter", "write"] {
+    for stage in ["plan", "prepare", "write"] {
         let output = hhkb(&["flash", stage, file.0.to_str().unwrap()]);
         assert!(!output.status.success(), "{stage}");
         assert!(text(&output.stderr).contains("allowlist"), "{stage}");

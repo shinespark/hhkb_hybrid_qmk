@@ -5,7 +5,7 @@ use std::process::{Command, Output, Stdio};
 use hhkb::hfb::{FILE_SIZE, crc16};
 use md5::{Digest, Md5};
 
-const STAGES: [&str; 3] = ["plan", "enter", "write"];
+const STAGES: [&str; 3] = ["plan", "prepare", "write"];
 
 struct TempFile(PathBuf);
 

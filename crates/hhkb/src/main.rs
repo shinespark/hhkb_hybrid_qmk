@@ -63,7 +63,7 @@ enum FlashStage {
     /// Verify an HFB and show its kind, packet count, and connection. Sends nothing to the device
     Plan { path: PathBuf },
     /// Switch to update mode. Checks the device version on stock firmware. Does not write the firmware
-    Enter { path: PathBuf },
+    Prepare { path: PathBuf },
     /// Write the firmware to a device in update mode
     Write { path: PathBuf },
 }
@@ -247,7 +247,9 @@ fn finish_stage(result: Result<(), Abort>) -> ExitCode {
 
 fn flash_stage(stage: FlashStage) -> ExitCode {
     let path = match &stage {
-        FlashStage::Plan { path } | FlashStage::Enter { path } | FlashStage::Write { path } => path,
+        FlashStage::Plan { path } | FlashStage::Prepare { path } | FlashStage::Write { path } => {
+            path
+        }
     };
     let hfb = match load_verified(path) {
         Ok(hfb) => hfb,
@@ -258,7 +260,7 @@ fn flash_stage(stage: FlashStage) -> ExitCode {
     };
     match stage {
         FlashStage::Plan { .. } => with_hid(|hid| flash_plan(hid, &hfb)),
-        FlashStage::Enter { .. } => finish_stage(flash::enter(&hfb)),
+        FlashStage::Prepare { .. } => finish_stage(flash::prepare(&hfb)),
         FlashStage::Write { .. } => finish_stage(flash::write(&hfb)),
     }
 }
