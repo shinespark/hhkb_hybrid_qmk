@@ -84,49 +84,48 @@ VIA でキーマップを変更できる `via` を適用します。VIA を使�
 
 ### 1. ビルドの準備
 
-```sh
-git submodule update --init third_party/hhkb_hybrid
-git -C third_party/hhkb_hybrid submodule update --init --depth 1 qmk_firmware
-git -C third_party/hhkb_hybrid/qmk_firmware submodule update --init --depth 1 lib/chibios lib/chibios-contrib lib/lufa lib/printf
+```console
+$ git submodule update --init third_party/hhkb_hybrid
+$ git -C third_party/hhkb_hybrid submodule update --init --depth 1 qmk_firmware
+$ git -C third_party/hhkb_hybrid/qmk_firmware submodule update --init --depth 1 lib/chibios lib/chibios-contrib lib/lufa lib/printf
 ```
 
 ### 2. ビルドと HFB の生成
 
 Docker Desktop を起動してから実行します。`docker` コマンドが見つからないときは、Docker Desktop の CLI を PATH に追加してください。この時点では HHKB に接続しません。
 
-```sh
-cargo run -p hhkb -- qmk build via
-cargo run -p hhkb -- qmk hfb via --bin local/qmk-build/via-arm64/hhkb_hybrid_via.bin --stock local/HHKB800_FW_A048.hfb --out local/hhkb_hybrid_via.hfb
+```console
+$ cargo run -p hhkb -- qmk build via
+$ cargo run -p hhkb -- qmk hfb via --bin local/qmk-build/via-arm64/hhkb_hybrid_via.bin --stock local/HHKB800_FW_A048.hfb --out local/hhkb_hybrid_via.hfb
 ```
 
 ### 3. 書き込む前の確認
 
-- 公式ツールで現在の設定を `.hks` に保存する
-- 公式ツールと VIA のタブを閉じる
-- USB に接続する HHKB を 1 台にし、ハブを使わず直結する
-- HHKB とペアリングした機器の Bluetooth を切る。Bluetooth 接続時に転送が止まる例が参考実装の資料にあります
-- 別のキーボードを接続する。更新モードでは HHKB から入力できない可能性があります
+1. 別のキーボードを PC につなぐ。書き込み中は HHKB で入力できないことがあります
+2. 公式ツールで現在の設定を `.hks` に保存する
+3. 公式ツールと、ブラウザの VIA のタブを閉じる
+4. HHKB を PC に USB で直接つなぐ
 
 ### 4. 書き込み
 
 1. HFB の種類と接続状況を確認します。HHKB には送信しません
 
-   ```sh
-   cargo run -p hhkb -- flash plan local/hhkb_hybrid_via.hfb
+   ```console
+   $ cargo run -p hhkb -- flash plan local/hhkb_hybrid_via.hfb
    ```
 
 2. 更新モードへ移行します。確認文は `prepare via` です
 
-   ```sh
-   cargo run -p hhkb -- flash prepare local/hhkb_hybrid_via.hfb
+   ```console
+   $ cargo run -p hhkb -- flash prepare local/hhkb_hybrid_via.hfb
    ```
 
 3. HHKB からキー入力できないことを確認します。USB の表示では公式ファームウェアと更新モードを区別できません。キー入力できるときは次へ進まないでください
 
 4. 本体を書き込みます。確認文は `write via` で、別のキーボードで入力します
 
-   ```sh
-   caffeinate -i cargo run -p hhkb -- flash write local/hhkb_hybrid_via.hfb
+   ```console
+   $ caffeinate -i cargo run -p hhkb -- flash write local/hhkb_hybrid_via.hfb
    ```
 
 5. USB の表示とキー入力を確認します
@@ -141,10 +140,10 @@ cargo run -p hhkb -- qmk hfb via --bin local/qmk-build/via-arm64/hhkb_hybrid_via
 
 [書き込む前の確認](#3-書き込む前の確認)の後に実行します。キー入力できないことを確認してから `flash write` を実行してください。
 
-```sh
-cargo run -p hhkb -- flash plan local/HHKB800_FW_A048.hfb
-cargo run -p hhkb -- flash prepare local/HHKB800_FW_A048.hfb
-caffeinate -i cargo run -p hhkb -- flash write local/HHKB800_FW_A048.hfb
+```console
+$ cargo run -p hhkb -- flash plan local/HHKB800_FW_A048.hfb
+$ cargo run -p hhkb -- flash prepare local/HHKB800_FW_A048.hfb
+$ caffeinate -i cargo run -p hhkb -- flash write local/HHKB800_FW_A048.hfb
 ```
 
 確認文は、`flash prepare` が `prepare stock`、`flash write` が `write stock` です。
@@ -157,8 +156,8 @@ caffeinate -i cargo run -p hhkb -- flash write local/HHKB800_FW_A048.hfb
 
 まず状態を確認します。
 
-```sh
-cargo run -p hhkb -- list
+```console
+$ cargo run -p hhkb -- list
 ```
 
 | 症状 | 考えられる状態 | 対処 |
