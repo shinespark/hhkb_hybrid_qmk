@@ -1,6 +1,10 @@
 # HHKB Hybrid QMK
 
-HHKB Professional Hybrid（英語配列）向けの QMK をビルドし、macOS から書き込む非公式の CLI です。
+HHKB Professional Hybrid（英語配列）向けの QMK をビルドして書き込む非公式の CLI です。
+
+現在は下記の製品を、macOS で書き換えられることを確認しています。
+
+- HHKB Professional HYBRID Type-S（英語配列）
 
 ## 免責事項
 
@@ -12,12 +16,12 @@ HHKB Professional Hybrid（英語配列）向けの QMK をビルドし、macOS 
 
 ## QMK と VIA
 
-QMK はキーボードのファームウェアです。本リポジトリでは `default` と `via` の 2 つの keymap をビルドできます。`via` を[書き込む](#qmk-の適用)と、ブラウザで [VIA](https://usevia.app) を開き、ビルドし直さずにキーマップを変更できます。
+QMK はキーボードのファームウェアです。本リポジトリでは `default` と `via` の 2 つの keymap をビルドできます。`via` を書き込むと、ブラウザで [VIA](https://usevia.app) を開き、ビルドし直さずにキーマップを変更できます。
 
 ### `via` を書き込むとできるようになること
 
 - 公式のキーマップ変更ツールでは実現できなかったキーマップ変更（特別な機能を割り当てられた一部のキーの変更など）ができるようになります
-- レイヤーを 8 枚（0〜7）使えます
+- 8 レイヤー使えるようになります
 - Bluetooth の接続先の切り替えやペアリングの開始などを、専用のキーとして任意の位置に割り当てられます
 
 ![VIA のキーマップ画面](docs/images/via-keymap.png)
@@ -39,7 +43,7 @@ HHKB には、キー入力を処理する STM32 と、Bluetooth を担当する 
 | STM32 のブートローダ領域 | 起動と更新モードの処理 | 変更しない |
 | STM32 のアプリ領域（64 KiB） | 公式ファームウェア | QMK に置き換わる |
 | STM32 の EEPROM | キーマップと設定 | `via` では VIA の変更をここに保存する |
-| nRF | Bluetooth のファームウェア | 公式のものをそのまま使う |
+| nRF | Bluetooth のファームウェア | 変更しない |
 
 ```mermaid
 flowchart LR
@@ -63,14 +67,14 @@ flowchart LR
 ## 注意事項
 
 - 英語配列以外の機種は未検証です
-- 公式ツールが通知するファームウェア更新は適用しないでください。`hhkb flash` は公式ファームウェア `A0.48` を前提としています
+- `hhkb flash` は公式ファームウェア `A0.48` を前提としています
 - QMK の動作中は公式ツールを起動しないでください。送信内容が未確認で、公式ファームウェアを前提とする書き込みが発生する可能性があります
 - ファームウェアの書き込み中は、USB ケーブルを抜かず、PC をスリープさせないでください
 - ビルドした `.bin` と生成した `.hfb` は公開も配布もしないでください
 
 ## 必要なもの
 
-- macOS と Rust のツールチェーン
+- macOS と Rust のツールチェーン。Linux など macOS 以外でも実行できる可能性はありますが、動作は未確認です
 - 公式の更新ファイル `local/HHKB800_FW_A048.hfb`。本リポジトリには含まないので、利用者自身で用意してください
 - Docker Desktop
 - もう 1 枚のキーボード
@@ -101,7 +105,7 @@ $ cargo run -p hhkb -- qmk hfb via --bin local/qmk-build/via-arm64/hhkb_hybrid_v
 
 ### 3. 書き込む前の確認
 
-1. 別のキーボードを PC につなぐ。書き込み中は HHKB で入力できないことがあります
+1. 別のキーボードを PC につなぐ。書き込み中は HHKB で一時的に入力できなくなります
 2. 公式ツールで現在の設定を `.hks` に保存する
 3. 公式ツールと、ブラウザの VIA のタブを閉じる
 4. HHKB を PC に USB で直接つなぐ
@@ -125,16 +129,26 @@ $ cargo run -p hhkb -- qmk hfb via --bin local/qmk-build/via-arm64/hhkb_hybrid_v
 4. 本体を書き込みます。確認文は `write via` で、別のキーボードで入力します
 
    ```console
-   $ caffeinate -i cargo run -p hhkb -- flash write local/hhkb_hybrid_via.hfb
+   $ cargo run -p hhkb -- flash write local/hhkb_hybrid_via.hfb
    ```
+
+   Mac では、書き込み中のスリープを防ぐために、先頭に `caffeinate -i` を付けて実行することを推奨します
 
 5. USB の表示とキー入力を確認します
 
 ### 5. 書き込んだ後
 
-- HHKB は VIA の公式リストに載っていないので、最初に定義ファイル `third_party/hhkb_hybrid/via/hhkb_hybrid.json` を VIA の Design タブから読み込みます。手順は[参考実装の資料](https://github.com/l3tnun/hhkb_hybrid/blob/0099ac64d30a0530714844fe1fcbaff230fc65fa/docs/via.md)を参照してください
+HHKB は VIA の公式リストに載っていないので、最初に定義ファイルを読み込みます。
+
+1. HHKB を USB で接続したまま、ブラウザで [VIA](https://usevia.app) を開く
+2. 右上の歯車（Settings）で **Show Design tab** をオンにする
+3. **Design** タブの **Load Draft Definition** で `third_party/hhkb_hybrid/via/hhkb_hybrid.json` を選ぶ
+4. **Configure** タブの **Authorize device** で `HHKB Hybrid QMK` を選んで接続する
+
+定義はブラウザに保存されるので、次回からは 4 だけで接続できます。別のブラウザや PC を使うときや、サイトデータを消したときは読み込み直してください。
+
 - VIA で接続エラーが出たときは、ページを再読み込みしてください
-- Bluetooth で接続できないときは、接続先を登録し直してください。Mac の Bluetooth の一覧に、同じ名前の古い項目が残ることがあります
+- Bluetooth で接続できないときは、接続先を登録し直してください。Mac の Bluetooth の一覧に古い接続が残っていた場合は、削除してから登録し直してください
 
 ## 公式ファームウェアへ戻す
 
@@ -143,12 +157,10 @@ $ cargo run -p hhkb -- qmk hfb via --bin local/qmk-build/via-arm64/hhkb_hybrid_v
 ```console
 $ cargo run -p hhkb -- flash plan local/HHKB800_FW_A048.hfb
 $ cargo run -p hhkb -- flash prepare local/HHKB800_FW_A048.hfb
-$ caffeinate -i cargo run -p hhkb -- flash write local/HHKB800_FW_A048.hfb
+$ cargo run -p hhkb -- flash write local/HHKB800_FW_A048.hfb
 ```
 
-確認文は、`flash prepare` が `prepare stock`、`flash write` が `write stock` です。
-
-`via` から戻すと VIA の設定が消え、公式ファームウェアのキーマップが既定の配置に変わることがあります。`via` を書き込む前に `.hks` を保存し、戻した後に公式ツールで復元してください。
+Mac では、書き込み中のスリープを防ぐために、`flash write` の先頭に `caffeinate -i` を付けて実行することを推奨します。
 
 ## 動かなくなったとき
 
@@ -195,7 +207,6 @@ USB に表示されないとき:
 ### 制限
 
 - `hhkb flash` で書き込めるのは、許可リストにある公式ファームウェア、`default`、`via` の HFB だけです
-- 確認を省略するオプションはありません。再送や自動のやり直しもしません
 - 公式ファームウェアの動作中は、HHKB と HFB のバージョンが一致しないと更新モードへ移行しません
 - QMK の動作中や状態を確定できないときは、`flash write` は何も送信しません
 - `qmk build` は、参考実装と QMK 本体のコミットを検証してからビルドします。`.bin` が想定と異なるときは 0 以外で終了します。一致してもビルド結果が同じというだけで、動作は保証しません
@@ -206,12 +217,9 @@ USB に表示されないとき:
 
 - 参考実装のファイルは MIT、GPL-2.0-or-later、Apache-2.0 が混在します。上流の QMK 本体などは、それぞれのライセンスに従います。正確な内容は参考実装の `LICENSE`、`README.md`、各ファイルの `SPDX-License-Identifier` を確認してください
 - `.bin` は QMK 本体（GPL-2.0）と結合したものです。`.hfb` には PFU 製の nRF イメージが含まれます
-- これらのライセンスは、PFU の公式ファームウェアや公式ツールと、そこから派生したものについて権利を与えません
+- これらのライセンスは、PFU の公式ファームウェアや公式ツールと、そこから派生したものには適用されません
 
 ## 未検証の項目
 
 - 書き込みが途中で止まった状態からの復旧
-- Esc を押しながら USB を接続して更新モードへ入る手順
-- 電源を切った後の設定の保持
-- 読み出しに現れないファームウェア内部の状態
-- 他の個体と他の機種での動作
+- 他の機種での動作
