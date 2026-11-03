@@ -1,4 +1,4 @@
-# HHKB Hybrid QMK
+# HHKB Professional Hybrid QMK
 
 [English](README.md) | 日本語
 
