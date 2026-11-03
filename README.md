@@ -46,6 +46,10 @@ An example of Bluetooth keys assigned to layer 2. The Custom tab at the bottom o
 | `OUT_AUTO` | `USB` | Returns the output to automatic (USB preferred) |
 | `BT_DEL1`–`BT_DEL4` | `BDel1`–`BDel4` | In pairing mode, deletes the registration in that slot |
 
+![VIA numpad layer screen](docs/images/via-numpad-layer.png)
+
+An example of layer 3 set up as a numpad.
+
 ## How it works
 
 The CLI uses the HHKB's update mode to replace the keyboard firmware with QMK.
