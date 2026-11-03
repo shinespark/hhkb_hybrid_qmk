@@ -86,7 +86,7 @@ flowchart LR
 
 ## 必要なもの
 
-- macOS と Rust のツールチェーン。Linux など macOS 以外でも実行できる可能性はありますが、動作は未確認です
+- macOS と Rust のツールチェーン。手順は macOS を前提としています
 - 公式の更新ファイル `local/HHKB800_FW_A048.hfb`。本リポジトリには含まないので、利用者自身で用意してください
 - Docker Desktop
 - もう 1 枚のキーボード
