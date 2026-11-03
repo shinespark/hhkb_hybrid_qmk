@@ -129,10 +129,8 @@ $ cargo run -p hhkb -- qmk hfb via --bin local/qmk-build/via-arm64/hhkb_hybrid_v
 4. 本体を書き込みます。確認文は `write via` で、別のキーボードで入力します
 
    ```console
-   $ cargo run -p hhkb -- flash write local/hhkb_hybrid_via.hfb
+   $ caffeinate -i cargo run -p hhkb -- flash write local/hhkb_hybrid_via.hfb
    ```
-
-   Mac では、書き込み中のスリープを防ぐために、先頭に `caffeinate -i` を付けて実行することを推奨します
 
 5. USB の表示とキー入力を確認します
 
@@ -157,10 +155,8 @@ HHKB は VIA の公式リストに載っていないので、最初に定義フ�
 ```console
 $ cargo run -p hhkb -- flash plan local/HHKB800_FW_A048.hfb
 $ cargo run -p hhkb -- flash prepare local/HHKB800_FW_A048.hfb
-$ cargo run -p hhkb -- flash write local/HHKB800_FW_A048.hfb
+$ caffeinate -i cargo run -p hhkb -- flash write local/HHKB800_FW_A048.hfb
 ```
-
-Mac では、書き込み中のスリープを防ぐために、`flash write` の先頭に `caffeinate -i` を付けて実行することを推奨します。
 
 ## 動かなくなったとき
 
