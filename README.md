@@ -1,104 +1,106 @@
 # HHKB Hybrid QMK
 
-HHKB Professional Hybrid（英語配列）向けの QMK をビルドして書き込む非公式の CLI です。
+English | [日本語](README.ja.md)
 
-現在は下記の製品を、macOS で書き換えられることを確認しています。
+An unofficial CLI that builds QMK for the HHKB Professional Hybrid (US layout) and flashes it to the keyboard.
 
-- HHKB Professional HYBRID Type-S（英語配列）
+Flashing has been confirmed on macOS with the following product:
 
-## 免責事項
+- HHKB Professional HYBRID Type-S (US layout)
 
-⚠️ 利用する前に確認してください。
+## Disclaimer
 
-- 本プロジェクトは PFU Limited および HHKB とは無関係の非公式なものです。本プロジェクトについて PFU に問い合わせないでください。記載の製品名は各社の商標または登録商標です
-- 内容は無保証です。キーボードの故障、データの消失、その他の損害を含め、利用は自己責任です。公式以外のファームウェアを書き込むと、メーカーの保証を受けられなくなる可能性があります
-- 本リポジトリは、公式ツール、公式ファームウェア、そこから抽出したデータを含まず、配布しません。公式ツールとファームウェアの利用には、PFU の使用許諾と法令が適用されます。参考実装 [l3tnun/hhkb_hybrid](https://github.com/l3tnun/hhkb_hybrid) は submodule で参照するだけです
+⚠️ Read this before using the project.
 
-## QMK と VIA
+- This project is unofficial and is not affiliated with PFU Limited or HHKB. Do not contact PFU about this project. Product names mentioned here are trademarks or registered trademarks of their respective owners
+- Everything is provided without warranty. You use it at your own risk, including any damage to the keyboard, loss of data, or other harm. Flashing unofficial firmware may void the manufacturer's warranty
+- This repository does not contain or distribute the official tool, the official firmware, or data extracted from them. Use of the official tool and firmware is subject to PFU's license terms and applicable law. The reference implementation [l3tnun/hhkb_hybrid](https://github.com/l3tnun/hhkb_hybrid) is only referenced as a submodule
 
-QMK はキーボードのファームウェアです。本リポジトリでは `default` と `via` の 2 つの keymap をビルドできます。`via` を書き込むと、ブラウザで [VIA](https://usevia.app) を開き、ビルドし直さずにキーマップを変更できます。
+## QMK and VIA
 
-### `via` を書き込むとできるようになること
+QMK is keyboard firmware. This repository can build two keymaps: `default` and `via`. After flashing `via`, you can open [VIA](https://usevia.app) in a browser and change the keymap without rebuilding.
 
-- 公式のキーマップ変更ツールでは実現できなかったキーマップ変更（特別な機能を割り当てられた一部のキーの変更など）ができるようになります
-- 8 レイヤー使えるようになります
-- Bluetooth の接続先の切り替えやペアリングの開始などを、専用のキーとして任意の位置に割り当てられます
+### What flashing `via` enables
 
-![VIA のキーマップ画面](docs/images/via-keymap.png)
+- Keymap changes that the official keymap tool could not make, such as changing some keys that are assigned special functions
+- 8 layers
+- Dedicated keys for actions such as switching the Bluetooth connection and starting pairing, which you can place at any position
 
-VIA でキーマップを Dvorak 配列に変更した例です。
+![VIA keymap screen](docs/images/via-keymap.png)
 
-![VIA のレイヤー 1 の画面](docs/images/via-fn-layer.png)
+An example of a keymap changed to Dvorak in VIA.
 
-Fn キーを押している間に使うレイヤー 1 の例です。Dvorak 配列では右 Shift の左隣のキーが Z です。公式のキーマップ変更ツールでこのキーに Z を割り当てると、Fn レイヤーも Z で上書きされ、従来の位置で下矢印を入力できなくなりました。VIA ではレイヤーごとに割り当てられるので、Z と下矢印を同じキーに置けます。
+![VIA layer 1 screen](docs/images/via-fn-layer.png)
 
-![VIA のカスタムキーの画面](docs/images/via-custom-keys.png)
+An example of layer 1, which is active while the Fn key is held. In Dvorak, the key to the left of Right Shift is Z. Assigning Z to this key in the official keymap tool also overwrote its Fn layer with Z, so the down arrow could no longer be typed at its usual position. VIA assigns keys per layer, so Z and the down arrow can share this key.
 
-レイヤー 2 に Bluetooth の専用キーを割り当てた例です。画面下の「カスタム」には、参考実装が用意した次のようなキーが並びます。
+![VIA custom keys screen](docs/images/via-custom-keys.png)
 
-| キー | 配置後の表示 | 動作 |
+An example of Bluetooth keys assigned to layer 2. The Custom tab at the bottom of the screen (カスタム in this screenshot) lists keys provided by the reference implementation, such as the following.
+
+| Key | Label after placing | Action |
 |---|---|---|
-| `BT_SLOT1`〜`BT_SLOT4` | `BT1`〜`BT4` | Bluetooth の接続先を切り替える。ペアリングモード中は、その接続先に登録する |
-| `BT_PAIR` | `Pair` | ペアリングモードに入る |
-| `BT_CANCEL` | `PCan` | ペアリングモードを取り消す |
-| `OUT_AUTO` | `USB` | 出力を自動（USB 優先）に戻す |
-| `BT_DEL1`〜`BT_DEL4` | `BDel1`〜`BDel4` | ペアリングモード中に押すと、その接続先の登録を削除する |
+| `BT_SLOT1`–`BT_SLOT4` | `BT1`–`BT4` | Switches the Bluetooth connection. In pairing mode, registers the device to that slot |
+| `BT_PAIR` | `Pair` | Enters pairing mode |
+| `BT_CANCEL` | `PCan` | Cancels pairing mode |
+| `OUT_AUTO` | `USB` | Returns the output to automatic (USB preferred) |
+| `BT_DEL1`–`BT_DEL4` | `BDel1`–`BDel4` | In pairing mode, deletes the registration in that slot |
 
-## 仕組み
+## How it works
 
-HHKB の更新モードを使って、キーボードのファームウェアを QMK に置き換えます。
+The CLI uses the HHKB's update mode to replace the keyboard firmware with QMK.
 
-HHKB には、キー入力を処理する STM32 と、Bluetooth を担当する nRF の 2 つのチップがあります。QMK を書き込む先は、STM32 のアプリ領域です。
+The HHKB has two chips: an STM32 that processes key input and an nRF that handles Bluetooth. QMK is written to the STM32 application area.
 
-| 書き込み先 | 公式ファームウェアでの内容 | QMK を適用した後 |
+| Target | With the official firmware | After applying QMK |
 |---|---|---|
-| STM32 のブートローダ領域 | 起動と更新モードの処理 | 変更しない |
-| STM32 のアプリ領域（64 KiB） | 公式ファームウェア | QMK に置き換わる |
-| STM32 の EEPROM | キーマップと設定 | `via` では VIA の変更をここに保存する |
-| nRF | Bluetooth のファームウェア | 変更しない |
+| STM32 bootloader area | Startup and update mode | Not changed |
+| STM32 application area (64 KiB) | Official firmware | Replaced with QMK |
+| STM32 EEPROM | Keymap and settings | With `via`, stores changes made in VIA |
+| nRF | Bluetooth firmware | Not changed |
 
 ```mermaid
 flowchart LR
-    source["QMK 本体と<br>キーボード定義"] -->|qmk build| bin[".bin"]
-    bin -->|qmk hfb| hfb["QMK の HFB"]
-    stock["公式の HFB"] -->|qmk hfb| hfb
+    source["QMK and<br>keyboard definition"] -->|qmk build| bin[".bin"]
+    bin -->|qmk hfb| hfb["QMK HFB"]
+    stock["Official HFB"] -->|qmk hfb| hfb
     hfb -->|"flash prepare<br>flash write"| hhkb["HHKB"]
-    via["VIA（ブラウザ）"] <-->|キーマップの読み書き| hhkb
+    via["VIA (browser)"] <-->|read and write keymap| hhkb
 ```
 
-1. **QMK のビルド（`qmk build`）**: [参考実装](https://github.com/l3tnun/hhkb_hybrid)にある HHKB 用のキーボード定義と QMK 本体を Docker でビルドし、`.bin` を作ります
-2. **更新ファイルの生成（`qmk hfb`）**: 公式の更新ファイル（HFB）のうち、キー入力を処理する STM32 のアプリ領域を `.bin` に置き換え、チェックサムを計算し直します。Bluetooth を担当する nRF のイメージは公式のものをそのまま使います
-3. **書き込み（`flash prepare`、`flash write`）**: HHKB を更新モードへ移行し、生成した HFB を USB から書き込みます
+1. **Build QMK (`qmk build`)**: Builds the HHKB keyboard definition from the [reference implementation](https://github.com/l3tnun/hhkb_hybrid) and QMK in Docker, producing a `.bin`
+2. **Generate the update file (`qmk hfb`)**: Replaces the STM32 application area of the official update file (HFB) with the `.bin` and recalculates the checksum. The nRF image, which handles Bluetooth, is kept as is from the official file
+3. **Flash (`flash prepare`, `flash write`)**: Puts the HHKB into update mode and writes the generated HFB over USB
 
-`via` でビルドした QMK は、VIA からの読み書きに応答します。VIA はブラウザから USB 経由でキーマップを読み書きし、変更はキーボードに保存されます。公式ファームウェアのままでは VIA を使えないので、QMK に置き換えます。
+QMK built with `via` responds to reads and writes from VIA. VIA reads and writes the keymap from the browser over USB, and changes are saved on the keyboard. The official firmware does not work with VIA, so it is replaced with QMK.
 
-公式ファームウェアへ戻すときは、公式の HFB を同じ手順で書き込みます。
+To return to the official firmware, flash the official HFB using the same steps.
 
-チップと領域の用途は[参考実装の資料](https://github.com/l3tnun/hhkb_hybrid/blob/0099ac64d30a0530714844fe1fcbaff230fc65fa/docs/hardware.md)にもとづきます。
+The purposes of the chips and areas are based on the [reference implementation's documentation](https://github.com/l3tnun/hhkb_hybrid/blob/0099ac64d30a0530714844fe1fcbaff230fc65fa/docs/hardware.md).
 
-## 注意事項
+## Cautions
 
-- 英語配列以外の機種は未検証です
-- `hhkb flash` は公式ファームウェア `A0.48` を前提としています
-- QMK の動作中は公式ツールを起動しないでください。送信内容が未確認で、公式ファームウェアを前提とする書き込みが発生する可能性があります
-- ファームウェアの書き込み中は、USB ケーブルを抜かず、PC をスリープさせないでください
-- ビルドした `.bin` と生成した `.hfb` は公開も配布もしないでください
+- Models other than the US layout have not been tested
+- `hhkb flash` assumes the official firmware version `A0.48`
+- Do not launch the official tool while QMK is running. What it sends has not been verified, and it may perform writes that assume the official firmware
+- While flashing, do not unplug the USB cable or let the computer sleep
+- Do not publish or distribute the `.bin` you build or the `.hfb` you generate
 
-## 必要なもの
+## Requirements
 
-- macOS と Rust のツールチェーン。手順は macOS を前提としています
-- 公式の更新ファイル `local/HHKB800_FW_A048.hfb`。本リポジトリには含まないので、利用者自身で用意してください
+- macOS and the Rust toolchain. The steps assume macOS
+- The official update file `local/HHKB800_FW_A048.hfb`. It is not included in this repository, so you need to provide it yourself
 - Docker Desktop
-- もう 1 枚のキーボード
-- WebHID に対応したブラウザ（Chrome、Edge など）
+- A second keyboard
+- A browser that supports WebHID (Chrome, Edge, etc.)
 
-## QMK の適用
+## Applying QMK
 
-VIA でキーマップを変更できる `via` を適用します。VIA を使わない場合は、コマンドと確認文の `via` を `default` に置き換えます。
+These steps apply `via`, which lets you change the keymap in VIA. If you do not use VIA, replace `via` with `default` in the commands and confirmation phrases.
 
-コマンドはリポジトリのルートで実行します。
+Run the commands from the repository root.
 
-### 1. ビルドの準備
+### 1. Prepare the build
 
 ```console
 $ git submodule update --init third_party/hhkb_hybrid
@@ -106,63 +108,63 @@ $ git -C third_party/hhkb_hybrid submodule update --init --depth 1 qmk_firmware
 $ git -C third_party/hhkb_hybrid/qmk_firmware submodule update --init --depth 1 lib/chibios lib/chibios-contrib lib/lufa lib/printf
 ```
 
-### 2. ビルドと HFB の生成
+### 2. Build and generate the HFB
 
-Docker Desktop を起動してから実行します。`docker` コマンドが見つからないときは、Docker Desktop の CLI を PATH に追加してください。この時点では HHKB に接続しません。
+Start Docker Desktop first. If the `docker` command is not found, add the Docker Desktop CLI to your PATH. The CLI does not access the HHKB at this point.
 
 ```console
 $ cargo run -p hhkb -- qmk build via
 $ cargo run -p hhkb -- qmk hfb via --bin local/qmk-build/via-arm64/hhkb_hybrid_via.bin --stock local/HHKB800_FW_A048.hfb --out local/hhkb_hybrid_via.hfb
 ```
 
-### 3. 書き込む前の確認
+### 3. Before flashing
 
-1. 別のキーボードを PC につなぐ。書き込み中は HHKB で一時的に入力できなくなります
-2. 公式ツールで現在の設定を `.hks` に保存する
-3. 公式ツールと、ブラウザの VIA のタブを閉じる
-4. HHKB を PC に USB で直接つなぐ
+1. Connect a second keyboard to the computer. The HHKB temporarily cannot type during flashing
+2. Save the current settings to a `.hks` file with the official tool
+3. Close the official tool and any browser tab with VIA open
+4. Connect the HHKB directly to the computer over USB
 
-### 4. 書き込み
+### 4. Flash
 
-1. HFB の種類と接続状況を確認します。HHKB には送信しません
+1. Check the HFB type and the connection. Nothing is sent to the HHKB
 
    ```console
    $ cargo run -p hhkb -- flash plan local/hhkb_hybrid_via.hfb
    ```
 
-2. 更新モードへ移行します。確認文は `prepare via` です
+2. Enter update mode. The confirmation phrase is `prepare via`
 
    ```console
    $ cargo run -p hhkb -- flash prepare local/hhkb_hybrid_via.hfb
    ```
 
-3. HHKB からキー入力できないことを確認します。USB の表示では公式ファームウェアと更新モードを区別できません。キー入力できるときは次へ進まないでください
+3. Confirm that the HHKB cannot type. The USB listing cannot distinguish the official firmware from update mode. If the HHKB can type, do not continue
 
-4. 本体を書き込みます。確認文は `write via` で、別のキーボードで入力します
+4. Write the firmware. The confirmation phrase is `write via`. Enter it on the second keyboard
 
    ```console
    $ caffeinate -i cargo run -p hhkb -- flash write local/hhkb_hybrid_via.hfb
    ```
 
-5. USB の表示とキー入力を確認します
+5. Check the USB listing and key input
 
-### 5. 書き込んだ後
+### 5. After flashing
 
-HHKB は VIA の公式リストに載っていないので、最初に定義ファイルを読み込みます。
+The HHKB is not on VIA's official list, so load the definition file first.
 
-1. HHKB を USB で接続したまま、ブラウザで [VIA](https://usevia.app) を開く
-2. 右上の歯車（Settings）で **Show Design tab** をオンにする
-3. **Design** タブの **Load Draft Definition** で `third_party/hhkb_hybrid/via/hhkb_hybrid.json` を選ぶ
-4. **Configure** タブの **Authorize device** で `HHKB Hybrid QMK` を選んで接続する
+1. With the HHKB connected over USB, open [VIA](https://usevia.app) in a browser
+2. Click the gear icon (Settings) at the top right and turn on **Show Design tab**
+3. In the **Design** tab, use **Load Draft Definition** to select `third_party/hhkb_hybrid/via/hhkb_hybrid.json`
+4. In the **Configure** tab, use **Authorize device** to select and connect `HHKB Hybrid QMK`
 
-定義はブラウザに保存されるので、次回からは 4 だけで接続できます。別のブラウザや PC を使うときや、サイトデータを消したときは読み込み直してください。
+The browser saves the definition, so next time you only need step 4. Load it again when you use another browser or computer, or after clearing site data.
 
-- VIA で接続エラーが出たときは、ページを再読み込みしてください
-- Bluetooth で接続できないときは、接続先を登録し直してください。Mac の Bluetooth の一覧に古い接続が残っていた場合は、削除してから登録し直してください
+- If VIA shows a connection error, reload the page
+- If Bluetooth cannot connect, register the connection again. If an old connection remains in the Mac's Bluetooth list, delete it before registering again
 
-## 公式ファームウェアへ戻す
+## Returning to the official firmware
 
-[書き込む前の確認](#3-書き込む前の確認)の後に実行します。キー入力できないことを確認してから `flash write` を実行してください。
+Run these after completing [Before flashing](#3-before-flashing). Confirm that the HHKB cannot type before running `flash write`.
 
 ```console
 $ cargo run -p hhkb -- flash plan local/HHKB800_FW_A048.hfb
@@ -170,64 +172,64 @@ $ cargo run -p hhkb -- flash prepare local/HHKB800_FW_A048.hfb
 $ caffeinate -i cargo run -p hhkb -- flash write local/HHKB800_FW_A048.hfb
 ```
 
-## 動かなくなったとき
+## Troubleshooting
 
-⚠️ 手順の多くは未検証です。書き込みを中止したときは、CLI が表示する到達した段階と次の手順も確認してください。
+⚠️ Most of these steps are untested. If flashing aborts, also check the stage reached and the next steps shown by the CLI.
 
-まず状態を確認します。
+First, check the state.
 
 ```console
 $ cargo run -p hhkb -- list
 ```
 
-| 症状 | 考えられる状態 | 対処 |
+| Symptom | Likely state | Action |
 |---|---|---|
-| キー入力できる | ファームウェアが動作中 | 復旧は不要です |
-| `HHKB-Hybrid` と表示され、キー入力できない | 更新モード | USB を抜き差しし、公式 HFB で `flash write` を実行します |
-| `HHKB Hybrid QMK` と表示され、`flash prepare` が失敗する | QMK が動作中 | 電源を切り、Esc を押したまま USB を接続して更新モードへ入り、`flash write` を実行します |
-| `flash write` が同じ位置で止まる | Bluetooth 接続の影響の可能性 | ペアリングを削除し、USB を抜き差ししてやり直します |
-| USB に表示されない | 認識の失敗、または起動できない状態 | 次の順に試します |
+| The HHKB can type | Firmware is running | No recovery is needed |
+| Shown as `HHKB-Hybrid` and cannot type | Update mode | Unplug and reconnect USB, then run `flash write` with the official HFB |
+| Shown as `HHKB Hybrid QMK` and `flash prepare` fails | QMK is running | Turn off the power, hold Esc while connecting USB to enter update mode, then run `flash write` |
+| `flash write` stops at the same position | Possibly caused by a Bluetooth connection | Delete the pairing, unplug and reconnect USB, and try again |
+| Not shown on USB | Not recognized, or cannot start | Try the steps below in order |
 
-USB に表示されないとき:
+When it is not shown on USB:
 
-1. ケーブルを替え、ハブを外して、PC の別のポートに直結する
-2. 電池を外し、USB を抜いて 10 秒待ち、USB だけで接続する
-3. Esc を押したまま USB を接続する
-4. 別の PC で認識を確認する
+1. Change the cable, remove any hub, and connect directly to another port on the computer
+2. Remove the batteries, unplug USB, wait 10 seconds, and connect over USB only
+3. Hold Esc while connecting USB
+4. Check whether another computer recognizes it
 
-うまくいかないときは、[参考実装の資料](https://github.com/l3tnun/hhkb_hybrid/blob/0099ac64d30a0530714844fe1fcbaff230fc65fa/docs/recovery.md)を参照してください。
+If this does not help, see the [reference implementation's documentation](https://github.com/l3tnun/hhkb_hybrid/blob/0099ac64d30a0530714844fe1fcbaff230fc65fa/docs/recovery.md).
 
-## コマンド
+## Commands
 
-`cargo run -p hhkb -- <コマンド>` で実行します。`<keymap>` は `default` または `via` です。
+Run commands with `cargo run -p hhkb -- <command>`. `<keymap>` is `default` or `via`.
 
-| コマンド | 内容 | HHKB への送信 |
+| Command | Description | Sent to the HHKB |
 |---|---|---|
-| `list` | USB の情報と推定した状態を表示する | なし |
-| `status` | 状態と応答の概要を表示する | 公式ファームウェアまたは更新モードに見えるときだけ `02` |
-| `inspect <HFB>` | HFB の領域、整合性、機種、バージョンを表示する | なし |
-| `flash plan <HFB>` | HFB の種類、パケット数、接続状況を表示する | なし |
-| `flash prepare <HFB>` | 更新モードへ移行する | 移行のレポート |
-| `flash write <HFB>` | 更新モードの HHKB に本体を書き込む | 本体 |
-| `qmk build <keymap>` | QMK をビルドし、`.bin` が想定どおりか照合する | なし |
-| `qmk hfb <keymap>` | 公式 HFB と `.bin` から HFB を生成する | なし |
+| `list` | Shows USB information and the estimated state | Nothing |
+| `status` | Shows the state and a summary of the response | `02`, only when it appears to be the official firmware or update mode |
+| `inspect <HFB>` | Shows the HFB's areas, integrity, model, and version | Nothing |
+| `flash plan <HFB>` | Shows the HFB type, packet count, and connection | Nothing |
+| `flash prepare <HFB>` | Enters update mode | The mode change report |
+| `flash write <HFB>` | Writes the firmware to the HHKB in update mode | The firmware |
+| `qmk build <keymap>` | Builds QMK and checks the `.bin` against the expected value | Nothing |
+| `qmk hfb <keymap>` | Generates an HFB from the official HFB and the `.bin` | Nothing |
 
-### 制限
+### Limitations
 
-- `hhkb flash` で書き込めるのは、許可リストにある公式ファームウェア、`default`、`via` の HFB だけです
-- 公式ファームウェアの動作中は、HHKB と HFB のバージョンが一致しないと更新モードへ移行しません
-- QMK の動作中や状態を確定できないときは、`flash write` は何も送信しません
-- `qmk build` は、参考実装と QMK 本体のコミットを検証してからビルドします。`.bin` が想定と異なるときは 0 以外で終了します。一致してもビルド結果が同じというだけで、動作は保証しません
-- `qmk hfb` のテンプレートには、許可した公式 HFB だけを指定できます。出力は `local/` に権限 `0600` で新規作成し、既存のファイルは上書きしません
-- ログは `local/logs/` に権限 `0600` で作成します。応答にシリアル番号が含まれるので共有しないでください
+- `hhkb flash` can only write the official firmware on the allow list and the `default` and `via` HFBs
+- While the official firmware is running, the HHKB does not enter update mode unless its version matches the HFB
+- While QMK is running or when the state cannot be determined, `flash write` sends nothing
+- `qmk build` verifies the commits of the reference implementation and QMK before building. It exits with a non-zero status if the `.bin` differs from the expected value. A match only means the build output is the same and does not guarantee correct operation
+- `qmk hfb` only accepts an allowed official HFB as a template. Output is created as a new file in `local/` with permissions `0600`, and existing files are not overwritten
+- Logs are created in `local/logs/` with permissions `0600`. Responses contain the serial number, so do not share them
 
-## ライセンス
+## License
 
-- 参考実装のファイルは MIT、GPL-2.0-or-later、Apache-2.0 が混在します。上流の QMK 本体などは、それぞれのライセンスに従います。正確な内容は参考実装の `LICENSE`、`README.md`、各ファイルの `SPDX-License-Identifier` を確認してください
-- `.bin` は QMK 本体（GPL-2.0）と結合したものです。`.hfb` には PFU 製の nRF イメージが含まれます
-- これらのライセンスは、PFU の公式ファームウェアや公式ツールと、そこから派生したものには適用されません
+- Files in the reference implementation use a mix of MIT, GPL-2.0-or-later, and Apache-2.0. Upstream projects such as QMK follow their own licenses. For exact terms, see the reference implementation's `LICENSE`, `README.md`, and each file's `SPDX-License-Identifier`
+- The `.bin` is combined with QMK (GPL-2.0). The `.hfb` contains an nRF image made by PFU
+- These licenses do not apply to PFU's official firmware or official tool, or to anything derived from them
 
-## 未検証の項目
+## Untested
 
-- 書き込みが途中で止まった状態からの復旧
-- 他の機種での動作
+- Recovery from a state where flashing stopped midway
+- Operation on other models
